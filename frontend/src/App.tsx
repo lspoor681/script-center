@@ -372,6 +372,31 @@ function App() {
                             </div>
                         ))}
 
+                        {(detail?.dependencies && detail.dependencies.length > 0) ||
+                        (detail?.unresolved && detail.unresolved.length > 0) ? (
+                            <>
+                                <h3>Needs</h3>
+                                <p className="empty">
+                                    A copy of this script has to bring these files with it.
+                                </p>
+                                <ul className="related">
+                                    {detail?.dependencies?.map((file) => (
+                                        <li key={file}>
+                                            <code>{file}</code>
+                                        </li>
+                                    ))}
+                                    {detail?.unresolved?.map((expression) => (
+                                        <li key={expression}>
+                                            <code>{expression}</code>
+                                            <span className="reason">
+                                                could not be resolved to a file
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        ) : null}
+
                         {detail?.docs?.documents && detail.docs.documents.length > 0 && (
                             <>
                                 <h3>Documentation</h3>

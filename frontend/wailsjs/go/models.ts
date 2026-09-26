@@ -47,6 +47,7 @@ export namespace app {
 	    name: string;
 	    dir: string;
 	    kind: string;
+	    language: string;
 	    lang: string;
 	    size: number;
 	    modTime: string;
@@ -66,6 +67,7 @@ export namespace app {
 	        this.name = source["name"];
 	        this.dir = source["dir"];
 	        this.kind = source["kind"];
+	        this.language = source["language"];
 	        this.lang = source["lang"];
 	        this.size = source["size"];
 	        this.modTime = source["modTime"];
@@ -97,6 +99,7 @@ export namespace app {
 	    docs: docs.Explanation;
 	    related?: Suggestion[];
 	    dependencies?: string[];
+	    unresolved?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ExplainView(source);
@@ -108,6 +111,7 @@ export namespace app {
 	        this.docs = this.convertValues(source["docs"], docs.Explanation);
 	        this.related = this.convertValues(source["related"], Suggestion);
 	        this.dependencies = source["dependencies"];
+	        this.unresolved = source["unresolved"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

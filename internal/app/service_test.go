@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lspoor/script-center/internal/detect"
 	"github.com/lspoor/script-center/internal/params"
 	"github.com/lspoor/script-center/internal/scan"
 )
@@ -668,21 +669,51 @@ func TestScanWarningsReachTheView(t *testing.T) {
 
 func TestViewsHoldTheLanguageForReReading(t *testing.T) {
 	// Invalidate has to hand the reader a language, and it recovers it from the
-	// display name the view carries. If that round trip breaks, a re-read would
-	// silently fall back to reading the file as an unknown type.
+	// view. It used to recover it by matching the display name against a list of
+	// known languages, so a language missing from that list came back Unknown and
+	// a re-read produced no form. The view now carries the language itself.
 	service, _ := newTestService(t)
 	view, err := service.OpenRoot(context.Background(), scriptTree(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, script := range view.Scripts {
-		got := service.languageOf(&script)
-		if got == "" {
-			t.Errorf("%s: language came back empty", script.Rel)
+		if script.Language == "" {
+			t.Errorf("%s: the view carries no language", script.Rel)
+		}
+		if got := script.detectedLanguage(); got.String() != script.Language {
+			t.Errorf("%s: language came back as %q, want %q", script.Rel, got, script.Language)
 		}
 	}
-	if got := service.languageOf(&ScriptView{Lang: "PowerShell"}); got.DisplayName() != "PowerShell" {
+
+	// A view built without a language reports Unknown rather than guessing from
+	// the display name, because a display name is for people.
+	if got := (ScriptView{Lang: "PowerShell"}).detectedLanguage(); got != detect.Unknown {
+		t.Errorf("a view with no language came back as %q, want Unknown", got)
+	}
+	if got := (ScriptView{Language: "powershell"}).detectedLanguage(); got != detect.PowerShell {
 		t.Errorf("PowerShell came back as %q", got)
+	}
+}
+
+func TestInvalidateKeepsTheScriptsLanguage(t *testing.T) {
+	// The end of the round trip: a re-read of a PowerShell script must still be
+	// read as PowerShell, or the user gets an empty form after asking for a fresh
+	// one.
+	service, _ := newTestService(t)
+	root := scriptTree(t)
+	if _, err := service.OpenRoot(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := service.Invalidate(context.Background(), root, "deploy.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.detectedLanguage() != detect.PowerShell {
+		t.Errorf("after a re-read the language is %q, want powershell", fresh.detectedLanguage())
+	}
+	if len(fresh.Metadata.Params) != 2 {
+		t.Errorf("after a re-read there are %d params, want 2: %+v", len(fresh.Metadata.Params), fresh.Metadata.Warnings)
 	}
 }
 

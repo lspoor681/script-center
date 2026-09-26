@@ -188,6 +188,21 @@ func (w *Workspace) ToggleFavorite(ref Ref) bool {
 	return true
 }
 
+// Snapshot returns a copy of the workspace that shares no slice with the
+// original.
+//
+// The mutators on Workspace edit their slices in place, which is the cheapest way
+// to keep them readable and is fine while one goroutine owns the value. It stops
+// being fine the moment somebody holds the workspace across a lock boundary, for
+// instance to write it to disk, so a caller that needs to keep a copy past an
+// unlock takes one of these.
+func (w *Workspace) Snapshot() *Workspace {
+	clone := *w
+	clone.Roots = append([]Root(nil), w.Roots...)
+	clone.Favorites = append([]Ref(nil), w.Favorites...)
+	return &clone
+}
+
 // FavoritesUnder returns the starred scripts belonging to one root, preserving
 // the order they were starred in.
 func (w *Workspace) FavoritesUnder(root string) []Ref {

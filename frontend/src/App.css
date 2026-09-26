@@ -158,6 +158,9 @@ button:focus-visible {
 }
 
 .ghost {
+    /* Never give up width to the row beside it. A control that shrinks to
+       nothing is worse than one that is a little cramped. */
+    flex: 0 0 auto;
     padding: 2px 6px;
     border-radius: 4px;
     color: var(--faint);
@@ -222,8 +225,14 @@ button:focus-visible {
 
 .script {
     flex: 1;
+    /* A flex item will not shrink below its min-content width unless told to, and
+       this one's content is a name plus nowrap badges. Left alone, a long name
+       makes the row wider than the pane, which pushes the sibling re-read button
+       out and squeezes it to a few pixels while its glyph still paints. The user
+       sees a control that cannot be clicked. */
+    min-width: 0;
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "name badges" "where badges";
     gap: 0 8px;
     padding: 6px 8px;
@@ -243,6 +252,12 @@ button:focus-visible {
 .script .name {
     grid-area: name;
     font-weight: 500;
+    /* The name column is the one that gives, so a long name is cut off rather
+       than widening the row. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .script .where {
@@ -258,7 +273,10 @@ button:focus-visible {
     grid-area: badges;
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 4px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .badge {

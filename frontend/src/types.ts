@@ -125,6 +125,10 @@ export type ScriptView = {
     name: string;
     dir: string;
     kind: string;
+    // language is the language's own name, such as "powershell". lang is its
+    // display name. The backend needs the first to re-read this script, which is
+    // why it is sent rather than recovered from the second.
+    language: string;
     lang: string;
     size: number;
     modTime: string;
@@ -147,7 +151,10 @@ export type ExplainView = {
     script: ScriptView;
     docs: Explanation;
     related?: Suggestion[];
+    // dependencies are the files this script dot-sources, relative to the root.
     dependencies?: string[];
+    // unresolved are dot-source expressions that could not be resolved to a file.
+    unresolved?: string[];
 };
 
 export type Toolchain = {
