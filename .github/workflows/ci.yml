@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.27.x'
+  WAILS_VERSION: v2.14.0
+  GOLANGCI_LINT_VERSION: v2.14.0
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -s -l . | grep -v '^frontend/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "::error::unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      # Kept as a separate, verbose step because it is the safeguard against a
+      # silent loss of pty support. A library with no Windows implementation
+      # still compiles and still reports no error at construction, so this test
+      # running on windows-latest is the only thing that catches it.
+      - name: Pty smoke tests
+        run: go test -v -count=1 -run 'TestPTY' ./internal/pty/
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install WebKit dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            pkg-config
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      # ubuntu-latest ships webkit2gtk-4.1 and no 4.0, so the tag is required
+      # rather than optional here.
+      - name: Build application
+        run: wails build -tags webkit2_41
+        env:
+          # Keeps the Linux build from embedding Vite dev-server defaults.
+          NODE_ENV: production
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: script-center-${{ matrix.os }}
+          path: build/bin/**/*
+          if-no-files-found: error
+          retention-days: 14

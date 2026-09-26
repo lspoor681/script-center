@@ -1,0 +1,48 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - misspell
+    - revive
+    - bodyclose
+    - unconvert
+    - errorlint
+  settings:
+    misspell:
+      # Pinned to US rather than the UK default: the product is named
+      # "Script Center", and misspell otherwise rewrites it to "Centre".
+      locale: US
+    revive:
+      rules:
+        # Exported identifiers in internal packages are part of an internal
+        # API, so they get doc comments.
+        - name: exported
+          disabled: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+    rules:
+      # Test helpers routinely discard cleanup errors, and assertions care
+      # about the value rather than the Close result.
+      - path: _test\.go$
+        linters:
+          - errcheck
+      # The Wails scaffold and crosspty interop surface both trip these; the
+      # panic-and-recover and unchecked-cast cases are deliberate.
+      - path: internal/pty/
+        linters:
+          - errorlint
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/lspoor/script-center

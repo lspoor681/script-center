@@ -1,0 +1,21 @@
+# Wails / build output
+build/bin
+frontend/dist
+node_modules/
+
+# Go
+*.test
+*.out
+coverage.*
+vendor/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local scratch
+*.log
+tmp/
