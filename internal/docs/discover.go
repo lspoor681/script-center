@@ -20,20 +20,25 @@ const (
 )
 
 // Document is one documentation file that explains a script.
+//
+// The JSON tags are lower case, matching every other type that crosses to the
+// frontend. Without them a document would arrive as "Path" and "Kind" while the
+// rest of the application reads "path" and "kind", which type-checks against the
+// generated bindings and is then silently undefined at run time.
 type Document struct {
 	// Path is the absolute path of the file.
-	Path string
+	Path string `json:"path"`
 	// Kind says whether the file is about this script alone or its project.
-	Kind Kind
+	Kind Kind `json:"kind"`
 	// Title is a heading to show for the document, taken from the first
 	// markdown heading when there is one and from the file name otherwise.
-	Title string
+	Title string `json:"title"`
 	// Section is the part of a project readme that is about this script, when a
 	// heading matching the script was found. It is empty when the whole file
 	// applies, which is the common case for a readme in a scripts directory.
-	Section string
+	Section string `json:"section,omitempty"`
 	// Excerpt reports whether Section is non-empty.
-	Excerpted bool
+	Excerpted bool `json:"excerpted"`
 }
 
 // MaxReadmeDepth bounds how far up the tree a readme is looked for. A readme in

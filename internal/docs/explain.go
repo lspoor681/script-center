@@ -8,21 +8,24 @@ import (
 
 // Explanation is everything known about one script's documentation, merged into
 // the form the UI shows.
+//
+// The JSON tags are lower case so that this agrees with the rest of the
+// application's wire format.
 type Explanation struct {
 	// Help is the script's own documentation. When the toolchain's help reader
 	// skipped a help block, this holds the prose recovered from the raw file
 	// instead, and Recovered says so.
-	Help params.Help
+	Help params.Help `json:"help"`
 	// Recovered reports that Help came from the raw-text fallback rather than
 	// from the language's own help reader. The two are not equally trustworthy
 	// in every respect, so the UI is told which produced it.
-	Recovered bool
+	Recovered bool `json:"recovered"`
 
 	// Documents are the readmes and sidecars found for the script, most
 	// specific first.
-	Documents []Document
+	Documents []Document `json:"documents"`
 	// Primary is the document to show first, or nil when none was found.
-	Primary *Document
+	Primary *Document `json:"primary,omitempty"`
 }
 
 // HasDocuments reports whether any file was found to explain the script.

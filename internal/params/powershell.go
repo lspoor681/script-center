@@ -140,7 +140,14 @@ func (h *PowerShellHarvester) Harvest(ctx context.Context, paths []string) ([]Re
 	// A batch that dropped or reordered a record would silently misalign the
 	// caller's view of which script produced which form, so the two are matched
 	// back up by path rather than trusted to line up.
-	return align(reports, paths), nil
+	return align(reports, paths, "PowerShell"), nil
+}
+
+// Extract implements Extractor. It is the same read as Harvest, under the name
+// the multi-language reader uses, so that a caller holding an Extractor does not
+// have to know which concrete harvester it has.
+func (h *PowerShellHarvester) Extract(ctx context.Context, paths []string) ([]Report, error) {
+	return h.Harvest(ctx, paths)
 }
 
 // runBatch invokes the interpreter once for one batch of scripts.
@@ -223,6 +230,10 @@ type harvestRecord struct {
 	Requirements      Requirements `json:"requirements"`
 	DotSources        []string     `json:"dotSources"`
 	UnparsedHelpBlock bool         `json:"unparsedHelpBlock"`
+	// Warnings are the interpreter's own explanations, as opposed to Error,
+	// which stops the script being read at all. A harvest carries both: one
+	// script in a batch can fail to parse while the rest are fine.
+	Warnings []string `json:"warnings"`
 }
 
 // report converts a wire record into a Report, normalising the loose ends that
@@ -235,6 +246,7 @@ func (r harvestRecord) report() Report {
 		Requirements:      r.Requirements,
 		DotSources:        r.DotSources,
 		UnparsedHelpBlock: r.UnparsedHelpBlock,
+		Warnings:          r.Warnings,
 	}
 	// A null help object decodes to the zero Help, whose Source is the empty
 	// string rather than one of the named values.
@@ -244,7 +256,13 @@ func (r harvestRecord) report() Report {
 	for i := range report.Params {
 		report.Params[i].Aliases = SortedAliases(report.Params[i].Aliases)
 		report.Params[i].Constraints = dropEmptyConstraints(report.Params[i].Constraints)
-		report.Params[i].Help = report.Help.ParamHelp(report.Params[i])
+		// PowerShell's help reader reports parameter descriptions in a map
+		// beside the parameters rather than on them, so a parameter with no
+		// prose of its own is filled in from there. A harvester that already
+		// attached the prose to the parameter keeps what it has.
+		if report.Params[i].Help == "" {
+			report.Params[i].Help = report.Help.ParamHelp(report.Params[i])
+		}
 	}
 	if r.Error != nil && *r.Error != "" {
 		report.AddWarning("%s", *r.Error)
@@ -276,7 +294,11 @@ func dropEmptyConstraints(in []Constraint) []Constraint {
 // records to paths by value. A path with no record gets a report explaining that
 // the interpreter returned nothing for it, so the caller never has to handle a
 // short slice.
-func align(reports []Report, paths []string) []Report {
+//
+// The harvester's name is passed in because the warning is shown to the user and
+// has to name the language that failed rather than whichever one happens to be
+// built in.
+func align(reports []Report, paths []string, harvester string) []Report {
 	byPath := make(map[string]Report, len(reports))
 	for _, report := range reports {
 		if report.Path != "" {
@@ -288,7 +310,8 @@ func align(reports []Report, paths []string) []Report {
 		report, ok := byPath[path]
 		if !ok {
 			report = Report{Path: path, Help: Help{Source: HelpSourceNone}}
-			report.AddWarning("the PowerShell harvester returned no record for this script")
+			report.AddWarning("the %s harvester returned no record for this script, "+
+				"so it will run without a form", harvester)
 		}
 		if report.Path == "" {
 			report.Path = path
@@ -323,3 +346,9 @@ func firstLine(text string) string {
 	}
 	return text
 }
+
+// Readability implements Extractor. PowerShell can always describe its own
+// parameters, provided the interpreter was found; a missing one is reported by
+// the harvester's own report rather than here, so that the reason reaches the
+// user attached to the script it applies to.
+func (h *PowerShellHarvester) Readability() Readability { return Readability{Readable: true} }

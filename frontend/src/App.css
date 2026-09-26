@@ -1,59 +1,512 @@
-#app {
-    height: 100vh;
-    text-align: center;
+/* A three-pane layout: roots on the left, the script list in the middle, and the
+   selected script's form on the right. The panes divide with CSS grid rather
+   than with fixed pixel widths so the detail pane keeps the room it needs for a
+   parameter table on a wide window and collapses gracefully on a narrow one. */
+
+:root {
+    --bg: #121214;
+    --panel: #17171a;
+    --raised: #1e1e22;
+    --line: #2a2a30;
+    --text: #e6e6e8;
+    --dim: #9a9aa4;
+    --faint: #6b6b76;
+    --accent: #6ea8fe;
+    --warn: #e0b341;
+    --warn-bg: #2a2415;
+    --error: #f0736a;
+    --error-bg: #2c1a1a;
 }
 
-#logo {
-    display: block;
-    width: 50%;
-    height: 50%;
-    margin: auto;
-    padding: 10% 0 0;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-origin: content-box;
+* {
+    box-sizing: border-box;
 }
 
-.result {
-    height: 20px;
-    line-height: 20px;
-    margin: 1.5rem auto;
+html, body, #root {
+    height: 100%;
+    margin: 0;
 }
 
-.input-box .btn {
-    width: 60px;
-    height: 30px;
-    line-height: 30px;
-    border-radius: 3px;
-    border: none;
-    margin: 0 0 0 20px;
-    padding: 0 8px;
-    cursor: pointer;
-}
-
-.input-box .btn:hover {
-    background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-    color: #333333;
-}
-
-.input-box .input {
-    border: none;
-    border-radius: 3px;
-    outline: none;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 10px;
-    background-color: rgba(240, 240, 240, 1);
+body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, sans-serif;
     -webkit-font-smoothing: antialiased;
 }
 
-.input-box .input:hover {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
+.app {
+    display: grid;
+    grid-template-columns: 220px minmax(240px, 1fr) minmax(320px, 1.4fr);
+    height: 100%;
 }
 
-.input-box .input:focus {
+/* Sidebar */
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 12px;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+}
+
+.sidebar-head {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sidebar h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.sidebar h2 {
+    margin: 8px 0 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+}
+
+.roots {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.roots li {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.root {
+    flex: 1;
+    text-align: left;
+    padding: 5px 8px;
+    border-radius: 5px;
+    color: var(--dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.root.current {
+    background: var(--raised);
+    color: var(--text);
+}
+
+.status {
+    margin: auto 0 0;
+    font-size: 11px;
+    color: var(--faint);
+    word-break: break-all;
+}
+
+.toolchains ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.toolchains li {
+    padding: 1px 6px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--faint);
+    cursor: help;
+}
+
+/* Buttons */
+
+button {
+    font: inherit;
+    color: inherit;
+    background: none;
     border: none;
-    background-color: rgba(255, 255, 255, 1);
+    cursor: pointer;
+}
+
+button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.primary {
+    padding: 6px 10px;
+    border-radius: 5px;
+    background: var(--accent);
+    color: #10131a;
+    font-weight: 600;
+}
+
+.primary:hover {
+    filter: brightness(1.08);
+}
+
+.ghost {
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--faint);
+}
+
+.ghost:hover {
+    background: var(--raised);
+    color: var(--text);
+}
+
+/* Script list */
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 10px;
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+}
+
+.busy,
+.meta {
+    margin: 0;
+    padding: 0 6px;
+    font-size: 11px;
+    color: var(--faint);
+}
+
+.warning,
+.error {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-size: 12px;
+}
+
+.warning {
+    background: var(--warn-bg);
+    color: var(--warn);
+}
+
+.error {
+    background: var(--error-bg);
+    color: var(--error);
+}
+
+.scripts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.scripts li {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.script {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "name badges" "where badges";
+    gap: 0 8px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    text-align: left;
+}
+
+.script:hover {
+    background: var(--raised);
+}
+
+.script.current {
+    background: var(--raised);
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.script .name {
+    grid-area: name;
+    font-weight: 500;
+}
+
+.script .where {
+    grid-area: where;
+    font-size: 11px;
+    color: var(--faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.badges {
+    grid-area: badges;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.badge {
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 16px;
+    color: var(--faint);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+}
+
+.badge.params {
+    color: var(--accent);
+    border-color: #2c3f5c;
+}
+
+.badge.cached {
+    color: var(--faint);
+}
+
+/* Detail */
+
+.detail {
+    padding: 16px 18px;
+    overflow-y: auto;
+}
+
+.detail header {
+    margin-bottom: 10px;
+}
+
+.detail h2 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.detail h3 {
+    margin: 20px 0 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+}
+
+.path {
+    margin: 2px 0 6px;
+    font-size: 11px;
+    color: var(--faint);
+    word-break: break-all;
+}
+
+.empty {
+    margin: 0;
+    padding: 8px;
+    color: var(--faint);
+    font-size: 12px;
+}
+
+.synopsis {
+    margin: 0 0 12px;
+    font-size: 13px;
+}
+
+.description {
+    margin: 12px 0 0;
+    color: var(--dim);
+    white-space: pre-wrap;
+}
+
+.params {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.params th {
+    text-align: left;
+    padding: 4px 8px 4px 0;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+    border-bottom: 1px solid var(--line);
+}
+
+.params td {
+    padding: 6px 8px 6px 0;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+}
+
+.params code {
+    font-size: 12px;
+}
+
+.aliases,
+.required {
+    margin-left: 5px;
+    font-size: 10px;
+    color: var(--faint);
+}
+
+.required {
+    color: var(--warn);
+}
+
+.params .type,
+.params .default {
+    color: var(--dim);
+    white-space: nowrap;
+}
+
+.params .help {
+    color: var(--dim);
+}
+
+.constraint {
+    display: inline-block;
+    margin: 2px 4px 0 0;
+    padding: 0 5px;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 15px;
+    color: var(--warn);
+    background: var(--warn-bg);
+}
+
+.example {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border-left: 2px solid var(--line);
+    border-radius: 0 4px 4px 0;
+    background: var(--panel);
+}
+
+.example strong {
+    font-size: 11px;
+}
+
+.example pre {
+    margin: 4px 0 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+.example p {
+    margin: 4px 0 0;
+    font-size: 11px;
+    color: var(--faint);
+}
+
+.related {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.related li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.reason {
+    font-size: 11px;
+    color: var(--faint);
+}
+
+/* The document list and its rendered body. A readme is arbitrary markup, so the
+   body is styled to be readable whatever the document contains: long words wrap,
+   wide tables scroll, and a code block scrolls rather than stretching the pane. */
+.doc-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+
+.doc-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.85rem;
+}
+
+.doc-tab.chosen {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.doc-kind {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+.doc-body {
+    max-height: 26rem;
+    overflow: auto;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    overflow-wrap: anywhere;
+}
+
+.doc-body :first-child {
+    margin-top: 0;
+}
+
+.doc-body :last-child {
+    margin-bottom: 0;
+}
+
+.doc-body pre {
+    overflow-x: auto;
+    padding: 0.5rem;
+    border-radius: 0.3rem;
+    background: var(--raised);
+}
+
+.doc-body table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+}
+
+.doc-body th,
+.doc-body td {
+    border: 1px solid var(--line);
+    padding: 0.25rem 0.5rem;
+    text-align: left;
+}
+
+.doc-body img {
+    max-width: 100%;
 }

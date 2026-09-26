@@ -581,7 +581,7 @@ func TestDecodeRecordsCarriesConstraintBounds(t *testing.T) {
 func TestAlign(t *testing.T) {
 	t.Run("reorders to the requested sequence", func(t *testing.T) {
 		reports := []Report{{Path: "b.ps1"}, {Path: "a.ps1"}}
-		got := align(reports, []string{"a.ps1", "b.ps1"})
+		got := align(reports, []string{"a.ps1", "b.ps1"}, "PowerShell")
 		if len(got) != 2 {
 			t.Fatalf("got %d reports, want 2", len(got))
 		}
@@ -591,7 +591,7 @@ func TestAlign(t *testing.T) {
 	})
 
 	t.Run("a missing record becomes a warning", func(t *testing.T) {
-		got := align(nil, []string{"gone.ps1"})
+		got := align(nil, []string{"gone.ps1"}, "PowerShell")
 		if len(got) != 1 {
 			t.Fatalf("got %d reports, want 1", len(got))
 		}
@@ -607,7 +607,7 @@ func TestAlign(t *testing.T) {
 	})
 
 	t.Run("a record with no path adopts the requested one", func(t *testing.T) {
-		got := align([]Report{{}}, []string{"x.ps1"})
+		got := align([]Report{{}}, []string{"x.ps1"}, "PowerShell")
 		if got[0].Path != "x.ps1" {
 			t.Errorf("Path = %q, want x.ps1", got[0].Path)
 		}

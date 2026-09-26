@@ -298,11 +298,17 @@ type Requirements struct {
 	PSVersion string `json:"psVersion,omitempty"`
 	// PSEditions are the required PowerShell editions, such as "Core".
 	PSEditions []string `json:"psEditions,omitempty"`
+	// PythonVersion is the minimum Python version, taken from a version gate in
+	// the script's own code such as a sys.version_info comparison. It has its
+	// own field rather than sharing PSVersion because a version means nothing
+	// without the interpreter it applies to.
+	PythonVersion string `json:"pythonVersion,omitempty"`
 }
 
 // IsEmpty reports whether the script declared no requirements.
 func (r Requirements) IsEmpty() bool {
-	return len(r.Modules) == 0 && !r.RunAsAdministrator && r.PSVersion == "" && len(r.PSEditions) == 0
+	return len(r.Modules) == 0 && !r.RunAsAdministrator && r.PSVersion == "" &&
+		len(r.PSEditions) == 0 && r.PythonVersion == ""
 }
 
 // Report is everything harvested about one script.
