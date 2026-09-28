@@ -117,6 +117,12 @@ func (a *App) RevealFile(path string) error {
 	return a.service.RevealFile(path)
 }
 
+// CopyText puts text on the system clipboard. It backs the right-click menu's
+// "Copy path" and the run panel's "Copy command".
+func (a *App) CopyText(text string) error {
+	return a.service.CopyText(text)
+}
+
 // ToggleFavorite stars or unstars a script.
 func (a *App) ToggleFavorite(root, rel string) (any, error) {
 	return a.service.ToggleFavorite(root, rel)

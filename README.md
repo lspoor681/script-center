@@ -9,7 +9,8 @@ It is a Wails v2 application: a Go backend (the engine, the file access, the
 state) wrapped in a React 19 + TypeScript + Vite 7 frontend (the window).
 
 The feature backlog and completed work are tracked in
-[`docs/TODO.md`](docs/TODO.md).
+[`docs/TODO.md`](docs/TODO.md); recent changes are recorded in
+[`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
 ## What it does
 

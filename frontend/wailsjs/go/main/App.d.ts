@@ -6,6 +6,8 @@ export function AddRoot(arg1:string,arg2:string):Promise<any>;
 
 export function ChooseRoot():Promise<any>;
 
+export function CopyText(arg1:string):Promise<void>;
+
 export function Explain(arg1:string,arg2:string):Promise<app.ExplainView>;
 
 export function Invalidate(arg1:string,arg2:string):Promise<app.ScriptView>;

@@ -463,6 +463,11 @@ mark {
 }
 
 .run-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 45%;
     margin-top: 14px;
     padding: 10px;
     border: 1px solid var(--line);
@@ -511,6 +516,8 @@ mark {
 }
 
 .run-output {
+    flex: 1 1 auto;
+    min-height: 40px;
     margin: 0;
     padding: 8px;
     border-radius: 5px;
@@ -522,7 +529,6 @@ mark {
     white-space: pre-wrap;
     word-break: break-word;
     overflow-y: auto;
-    max-height: 340px;
 }
 
 .notice {
@@ -592,7 +598,18 @@ mark {
 /* Detail */
 
 .detail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     padding: 16px 18px;
+    overflow: hidden;
+}
+
+/* The script's form scrolls in the upper half; the run terminal takes the
+   lower part of the pane and never scrolls away with it. */
+.detail-body {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
 }
 

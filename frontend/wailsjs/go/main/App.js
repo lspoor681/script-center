@@ -10,6 +10,10 @@ export function ChooseRoot() {
   return window['go']['main']['App']['ChooseRoot']();
 }
 
+export function CopyText(arg1) {
+  return window['go']['main']['App']['CopyText'](arg1);
+}
+
 export function Explain(arg1, arg2) {
   return window['go']['main']['App']['Explain'](arg1, arg2);
 }

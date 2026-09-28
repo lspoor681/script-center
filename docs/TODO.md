@@ -43,19 +43,41 @@ current plan of record.
       events, process working directory = the script's directory so relative
       paths and dot-sourced files resolve. Uses the existing `internal/pty`
       package.
-- [x] **Right-click context menu.** Running a script from a context menu on its
-      row (menu is an extensible item array so Star / Copy path / Reveal are
-      drop-in additions).
+- [x] **Right-click context menu.** Run, Run (Administrator), Star, Copy path
+      and Open file location from a menu on a script row.
+- [x] **Run as administrator.** Elevation wherever it can stay in the app, then
+      a fallback: Windows sudo's inline mode keeps the elevated run attached to
+      the terminal; when that is off, the script starts elevated in its own
+      window under a UAC prompt, which the panel reports via `RunView.Blind`
+      (no streaming, no stop, exit code still arrives). The run bar's Admin
+      checkbox is auto-checked and locked for `#Requires -RunAsAdministrator`,
+      and the context menu offers a one-click elevated run.
+- [x] **Input to a running script.** The run panel's input box sends one line to
+      the child (`pty.LineEnding()`), answering prompts like a sudo password.
+      It is kept alongside free-text arguments until the parameter form exists.
+- [x] **Run panel terminal pane.** The right pane splits horizontally while a
+      run is open: the script form above, the terminal below. The terminal
+      stays until its close button (which stops an unfinished run first), keeps
+      streaming output scrolled to the bottom, and offers Stop / Rerun / Copy
+      command.
+- [x] **Open file location.** `internal/proc.Reveal` opens a script's folder in
+      the platform's file manager with the file selected (`explorer /select`,
+      `open -R`, `xdg-open`), threaded through `Service.RevealFile`.
+- [x] **Copy to clipboard.** `internal/proc.CopyText` writes text per platform
+      (Windows clipboard API, `pbcopy`, `wl-copy`/`xclip`/`xsel`); Copy path in
+      the context menu and Copy command in the run panel use it.
+- [x] **Git status refresh.** A ↻ button on the git strip re-reads the root, so
+      the summary does not stall after edits.
+- [x] **Elevated run safety fix.** The terminal library rewrites a bare
+      `argv[0]` in the caller's slice; `pty.Start` now clones the argument
+      vector so the command reported to the panel stays truthful.
 
 ## Backlog
 
 - [ ] **Form-driven arguments.** Build the command line from the harvested
       parameter form instead of free-text extra arguments. Needs an argv builder
-      in `internal/params` plus a fill-in form in the run panel.
-- [ ] **Run as administrator.** Honor `runAsAdministrator` requirements (UAC
-      elevation path).
-- [ ] **Input to a running script.** Send stdin to the child from the run panel
-      (`pty.Session.Write` already exists; needs an input box).
+      in `internal/params` plus a fill-in form in the run panel. Once it ships,
+      the free-text argument box and the run input box are retired in its favour.
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
 - [ ] **Reading stage events.** Replace the single "busy" string with emitted
       stage events ("reading directory", "querying git", "harvesting parameters")

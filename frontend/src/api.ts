@@ -9,6 +9,7 @@
 import {
     AddRoot as addRootBinding,
     ChooseRoot as chooseRootBinding,
+    CopyText as copyTextBinding,
     Explain as explainBinding,
     Invalidate as invalidateBinding,
     OpenRoot as openRootBinding,
@@ -95,6 +96,10 @@ export function sendInput(id: string, text: string): Promise<void> {
 
 export function revealFile(path: string): Promise<void> {
     return revealFileBinding(path);
+}
+
+export function copyText(text: string): Promise<void> {
+    return copyTextBinding(text);
 }
 
 export function stopScript(id: string): Promise<void> {

@@ -29,6 +29,9 @@ type RunState = {
     status: RunStatus;
     code?: number;
     blind?: boolean;
+    // origin remembers what launched this run so the panel can rerun it with
+    // the same script, arguments and elevation as the first time.
+    origin?: {script: types.ScriptView; extra: string; raised: boolean};
 };
 
 // The context menu needs where it opened and what it was opened for.
@@ -69,6 +72,12 @@ function App() {
     // and ignored: ids are unique per run, and the frontend only ever watches
     // the most recent one.
     const activeIdRef = useRef<string | null>(null);
+    // outputRef is the terminal's <pre>. New output scrolls it to the bottom,
+    // so a long stream stays readable without the user dragging for it.
+    const outputRef = useRef<HTMLPreElement>(null);
+    // copied briefly relabels the "Copy command" button after a successful
+    // copy, so the user does not click it twice wondering if it worked.
+    const [copied, setCopied] = useState(false);
     // The right-click menu on a script row, or null when closed.
     const [menu, setMenu] = useState<MenuState | null>(null);
 
@@ -103,24 +112,30 @@ function App() {
         void api.toolchains().then(setTools).catch(() => undefined);
     }, [refreshWorkspace, refreshStatus]);
 
-    // Opening the selected root is where the metadata arrives.
+    // Opening the selected root is where the metadata arrives. It is a named
+    // callback rather than inline in the effect so the git strip's refresh
+    // button can re-read the same root.
+    const loadRoot = useCallback(async (path: string) => {
+        setBusy(`Reading ${path}…`);
+        try {
+            const next = await api.openRoot(path);
+            setView(next);
+            setError('');
+        } catch (err) {
+            fail('reading the root', err);
+        } finally {
+            setBusy('');
+            void refreshStatus();
+        }
+    }, [fail, refreshStatus]);
+
     useEffect(() => {
         if (!selected) {
             setView(null);
             return;
         }
-        setBusy(`Reading ${selected}…`);
-        api.openRoot(selected)
-            .then((next) => {
-                setView(next);
-                setError('');
-            })
-            .catch((err) => fail('reading the root', err))
-            .finally(() => {
-                setBusy('');
-                void refreshStatus();
-            });
-    }, [selected, fail, refreshStatus]);
+        void loadRoot(selected);
+    }, [selected, loadRoot]);
 
     // Opening a script is a second step: the list is cheap to show, the
     // documentation is not, so it is only fetched when a script is chosen.
@@ -278,6 +293,7 @@ function App() {
             dir: '',
             status: 'running',
             output: '',
+            origin: {script, extra, raised},
         });
         try {
             const view = await api.runScript(script.root, script.rel, splitArgs(extra), raised);
@@ -291,6 +307,7 @@ function App() {
                 status: 'running',
                 output: '',
                 blind: view.blind,
+                origin: {script, extra, raised},
             });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -325,6 +342,57 @@ function App() {
             // updated the panel.
         }
     }, []);
+
+    // Copying is a one-way trip to the system clipboard, which the browser
+    // context the app runs in cannot reach on its own.
+    const copyText = useCallback(async (text: string, what: string) => {
+        try {
+            await api.copyText(text);
+            if (what === 'command') {
+                setCopied(true);
+            }
+        } catch (err) {
+            fail(`copying the ${what}`, err);
+        }
+    }, [fail]);
+
+    const rerun = useCallback(() => {
+        const origin = run?.origin;
+        if (origin) {
+            void startRun(origin.script, origin.extra, origin.raised);
+        }
+    }, [run, startRun]);
+
+    // Closing the terminal stops an unfinished run first, then hides the pane.
+    // It stays open until this button, which is the point: a finished run's
+    // output remains on screen for reading, and a fresh run replaces it.
+    const closeRun = useCallback(() => {
+        activeIdRef.current = null;
+        const id = run?.id;
+        if (id) {
+            void stopRun(id);
+        }
+        setRun(null);
+    }, [run, stopRun]);
+
+    // The "Copy command" label is trivially reset so it cannot stick.
+    useEffect(() => {
+        if (!copied) {
+            return;
+        }
+        const timer = setTimeout(() => setCopied(false), 1500);
+        return () => clearTimeout(timer);
+    }, [copied]);
+
+    // New output arrives faster than the eye can track, so the terminal keeps
+    // its view pinned to the newest line rather than leaving the user hunting
+    // through past output.
+    useEffect(() => {
+        const el = outputRef.current;
+        if (el) {
+            el.scrollTop = el.scrollHeight;
+        }
+    }, [run?.output]);
 
     // Closing the context menu is a window concern, so it is handled here: any
     // click elsewhere or Escape dismisses it. The handler is re-armed whenever
@@ -364,6 +432,18 @@ function App() {
                 },
             },
             {
+                label: 'Star',
+                run: (script: types.ScriptView) => {
+                    void star(script);
+                },
+            },
+            {
+                label: 'Copy path',
+                run: (script: types.ScriptView) => {
+                    void copyText(script.path, 'path');
+                },
+            },
+            {
                 label: 'Open file location',
                 run: (script: types.ScriptView) => {
                     api.revealFile(script.path).catch((err) => {
@@ -372,7 +452,7 @@ function App() {
                 },
             },
         ],
-        [startRun, fail],
+        [startRun, fail, star, copyText],
     );
 
     const missing = useMemo(
@@ -501,6 +581,13 @@ function App() {
                                 Open on GitHub
                             </button>
                         )}
+                        <button
+                            className="ghost"
+                            title="Re-read this folder"
+                            onClick={() => void loadRoot(selected)}
+                        >
+                            ↻
+                        </button>
                     </div>
                 )}
 
@@ -583,6 +670,7 @@ function App() {
             </main>
 
             <section className="detail">
+                <div className="detail-body">
                 {!picked && <p className="empty">Choose a script to see what it accepts.</p>}
                 {picked && (
                     <>
@@ -775,6 +863,7 @@ function App() {
                         )}
                     </>
                 )}
+                </div>
 
                 {run && (
                     <div className="run-panel">
@@ -798,6 +887,23 @@ function App() {
                                     Stop
                                 </button>
                             )}
+                            {run.status !== 'running' && run.origin && (
+                                <button className="ghost" onClick={rerun} title="Run this again">
+                                    Rerun
+                                </button>
+                            )}
+                            {run.command.length > 0 && (
+                                <button
+                                    className="ghost"
+                                    onClick={() => void copyText(run.command.join(' '), 'command')}
+                                    title="Copy the command that was run"
+                                >
+                                    {copied ? 'Copied' : 'Copy command'}
+                                </button>
+                            )}
+                            <button className="ghost" onClick={closeRun} title="Close terminal">
+                                ×
+                            </button>
                         </div>
                         {run.warning && <p className="warning">{run.warning}</p>}
                         {run.error && <p className="error">{run.error}</p>}
@@ -808,7 +914,7 @@ function App() {
                                 closes.
                             </p>
                         )}
-                        <pre className="run-output">
+                        <pre className="run-output" ref={outputRef}>
                             {run.output || (run.status === 'running' ? 'Running…' : '(no output)')}
                         </pre>
                         {run.status === 'running' && !run.blind && (
