@@ -71,6 +71,10 @@ current plan of record.
 - [x] **Elevated run safety fix.** The terminal library rewrites a bare
       `argv[0]` in the caller's slice; `pty.Start` now clones the argument
       vector so the command reported to the panel stays truthful.
+- [x] **Working directory fix.** The scanner stores a script's directory
+      relative to the root; `commandFor` now resolves it to an absolute path
+      before starting the run, so nested scripts no longer fail with
+      "The Directory name is invalid".
 
 ## Backlog
 

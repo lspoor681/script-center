@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -20,16 +21,17 @@ import (
 )
 
 // viewScript builds a ScriptView for a rel path in a fake root. The path is
-// deliberately not a real file: commandFor only asks what the view says.
+// deliberately not a real file: commandFor only asks what the view says. The
+// directory is stored relative to the root, as the scan does.
 func viewScript(rel string, language detect.Language, kind scan.Kind) ScriptView {
-	root := filepath.Join("C:", "work", "scripts")
-	path := filepath.Join(root, filepath.FromSlash(rel))
+	root := filepath.Join("C:", string(filepath.Separator), "work", "scripts")
+	pathValue := filepath.Join(root, filepath.FromSlash(rel))
 	return ScriptView{
-		Path:     path,
+		Path:     pathValue,
 		Root:     root,
 		Rel:      filepath.ToSlash(rel),
-		Name:     filepath.Base(path),
-		Dir:      filepath.Dir(path),
+		Name:     filepath.Base(pathValue),
+		Dir:      path.Dir(rel),
 		Kind:     string(kind),
 		Language: string(language),
 	}
@@ -72,25 +74,25 @@ func TestCommandFor(t *testing.T) {
 			name:    "powershell",
 			script:  powershell,
 			want:    []string{"/sandbox/tool", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", powershell.Path},
-			wantDir: powershell.Dir,
+			wantDir: filepath.Dir(powershell.Path),
 		},
 		{
 			name:    "python",
 			script:  python,
 			want:    []string{"/sandbox/tool", python.Path},
-			wantDir: python.Dir,
+			wantDir: filepath.Dir(python.Path),
 		},
 		{
 			name:    "bash",
 			script:  bash,
 			want:    []string{"/sandbox/tool", bash.Path},
-			wantDir: bash.Dir,
+			wantDir: filepath.Dir(bash.Path),
 		},
 		{
 			name:    "batch",
 			script:  batch,
 			want:    []string{"/sandbox/tool", "/c", batch.Path},
-			wantDir: batch.Dir,
+			wantDir: filepath.Dir(batch.Path),
 		},
 	}
 	for _, tt := range tests {
@@ -128,6 +130,65 @@ func TestCommandFor(t *testing.T) {
 			t.Errorf("argv = %q, want `run` followed by the extras", argv)
 		}
 	})
+}
+
+// TestCommandForWorksFromRelativeDir covers the directory the scan actually
+// reports: relative to the root ("." for a root-level script, "dir/sub" for a
+// nested one). commandFor must resolve that into an absolute working directory,
+// because the OS looks up a relative one against the app's own directory and a
+// nested script would fail to start.
+func TestCommandForWorksFromRelativeDir(t *testing.T) {
+	// A single fixed executable for every language: the tests check the argv
+	// shape, not which interpreter the machine happens to have.
+	pinInterpreter(t, func(detect.Language) string { return "/sandbox/tool" })
+
+	root := filepath.Join("C:", string(filepath.Separator), "work", "scripts")
+	nested := ScriptView{
+		Path:     filepath.Join(root, "tools", "harness.cmd"),
+		Root:     root,
+		Rel:      "tools/harness.cmd",
+		Name:     "harness.cmd",
+		Dir:      "tools",
+		Kind:     string(scan.KindScript),
+		Language: string(detect.Batch),
+	}
+	topLevel := ScriptView{
+		Path:     filepath.Join(root, "Remediate.cmd"),
+		Root:     root,
+		Rel:      "Remediate.cmd",
+		Name:     "Remediate.cmd",
+		Dir:      ".",
+		Kind:     string(scan.KindScript),
+		Language: string(detect.Batch),
+	}
+
+	tests := []struct {
+		name    string
+		script  ScriptView
+		wantDir string
+	}{
+		{
+			name:    "a nested script resolves its directory against the root",
+			script:  nested,
+			wantDir: filepath.Join(root, "tools"),
+		},
+		{
+			name:    "a root-level script runs from the root itself",
+			script:  topLevel,
+			wantDir: root,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, dir, err := commandFor(tt.script, nil)
+			if err != nil {
+				t.Fatalf("commandFor: %v", err)
+			}
+			if dir != tt.wantDir {
+				t.Errorf("dir = %q, want %q", dir, tt.wantDir)
+			}
+		})
+	}
 }
 
 func TestCommandForMissingInterpreter(t *testing.T) {

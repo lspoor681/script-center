@@ -465,9 +465,8 @@ mark {
 .run-panel {
     display: flex;
     flex-direction: column;
-    flex: 0 1 auto;
+    flex: 0 0 33.333%;
     min-height: 0;
-    max-height: 45%;
     margin-top: 14px;
     padding: 10px;
     border: 1px solid var(--line);

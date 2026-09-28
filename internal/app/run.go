@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 
@@ -298,7 +299,14 @@ func commandFor(script ScriptView, extra []string) (argv []string, dir string, e
 	if err != nil {
 		return nil, "", err
 	}
-	return argv, script.Dir, nil
+	// The scan stores the directory relative to the root, so resolve a relative
+	// one here: the process working directory must be absolute, or the OS looks
+	// it up against this app's own directory and a nested script fails to start.
+	dir = script.Dir
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(script.Root, dir)
+	}
+	return argv, dir, nil
 }
 
 // scriptCommand builds the argv that runs one script file: the interpreter

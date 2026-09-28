@@ -43,3 +43,9 @@ session.
   normalizes a bare `argv[0]`, mutating the caller's slice in place, so the
   panel showed a resolved `sudo.exe` instead of the script. `pty.Start` now
   clones the argument vector before handing it over.
+- **Nested scripts failed to start with "The Directory name is invalid".** The
+  scanner records a script's directory relative to the root, but the run
+  command passed it straight to the operating system as the process working
+  directory, which the OS resolved against the app's own directory. `commandFor`
+  now resolves a relative directory against the root before starting the
+  script.
