@@ -522,6 +522,11 @@ func TestDecodeRecords(t *testing.T) {
 			input:   `not json`,
 			wantErr: true,
 		},
+		{
+			name:  "raw control byte in a string is stripped",
+			input: "[{\"path\":\"a.ps1\",\"help\":{\"source\":\"comment\",\"description\":\"A1B2C3 \x1a C3B2A1\"}}]",
+			want:  1,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -547,6 +552,50 @@ func TestDecodeRecords(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestStripControlBytes(t *testing.T) {
+	input := "keep\tme\r\nand \x1a drop \x00 this \x7f but not the rest"
+	got := string(stripControlBytes([]byte(input)))
+
+	if strings.Contains(got, "\x1a") || strings.Contains(got, "\x00") {
+		t.Errorf("stripControlBytes kept a control byte: %q", got)
+	}
+	if !strings.Contains(got, "\t") || !strings.Contains(got, "\r\n") {
+		t.Errorf("stripControlBytes dropped JSON whitespace: %q", got)
+	}
+	if len(got) > len(input) {
+		t.Errorf("stripControlBytes grew the input: %d -> %d", len(input), len(got))
+	}
+}
+
+// TestHarvestUnicodeControlChar exercises the production path against a script
+// whose help text contains U+2192, the character this package has seen a
+// console host turn into a raw 0x1A. The description has to survive as a
+// string, not fail the batch.
+func TestHarvestUnicodeControlChar(t *testing.T) {
+	h := harvesterFor(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "arrow.ps1")
+	body := []byte("\xef\xbb\xbf<#\r\n.SYNOPSIS\r\nReverses a serial.\r\n.DESCRIPTION\r\nReverses the certificate serial by byte order (A1B2C3 \xE2\x86\x92 C3B2A1).\r\n#>\r\nparam()\r\n")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	reports, err := h.Harvest(context.Background(), []string{path})
+	if err != nil {
+		t.Fatalf("Harvest: %v", err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("got %d reports, want 1", len(reports))
+	}
+	if reports[0].HasWarnings() {
+		t.Errorf("unexpected warnings: %v", reports[0].Warnings)
+	}
+	if !strings.Contains(reports[0].Help.Description, "\u2192") {
+		t.Errorf("description = %q, want it to contain the arrow U+2192",
+			reports[0].Help.Description)
 	}
 }
 

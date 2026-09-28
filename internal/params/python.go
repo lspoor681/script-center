@@ -203,7 +203,7 @@ func decodeJSONLines(data []byte, requested int) ([]Report, error) {
 	scanner.Buffer(make([]byte, 0, 64*1024), maxRecordBytes)
 
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+		line := strings.TrimSpace(string(stripControlBytes(scanner.Bytes())))
 		if line == "" {
 			continue
 		}

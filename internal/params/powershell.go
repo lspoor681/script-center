@@ -195,7 +195,7 @@ func (h *PowerShellHarvester) runBatch(ctx context.Context, exe, scriptPath stri
 
 // decodeRecords turns the interpreter's output into reports.
 func decodeRecords(data []byte, requested []string) ([]Report, error) {
-	trimmed := bytes.TrimSpace(data)
+	trimmed := bytes.TrimSpace(stripControlBytes(data))
 	if len(trimmed) == 0 {
 		return nil, fmt.Errorf("%w: the interpreter produced no output for %d script(s)",
 			ErrPowerShell, len(requested))

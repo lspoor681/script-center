@@ -28,6 +28,15 @@ param()
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
+# The console host encodes stdout through the session codepage, and a character
+# it cannot represent comes out as a raw byte instead of JSON text: U+2192 (the
+# arrow in "A1B2C3 -> C3B2A1") becomes 0x1A on some PowerShell builds, which is
+# a control character and fails the entire batch. UTF-8 can carry every
+# character a script can contain, so both streams are pinned here. The BOM is
+# suppressed because a byte 0xEF 0xBB 0xBF at the start would break JSON too.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+
 # Read one JSON request from stdin. Reading to end is deliberate: stdin is the
 # channel for the path list, so it cannot also carry the script.
 $raw = [System.Console]::In.ReadToEnd()

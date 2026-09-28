@@ -376,3 +376,20 @@ func SortedAliases(in []string) []string {
 	sort.Strings(out)
 	return out
 }
+
+// stripControlBytes removes every byte in 0x00-0x1F except the three that are
+// JSON whitespace (tab, LF, CR). Valid JSON never contains the rest, so the
+// filter is a no-op for well-formed output, but a console host that maps an
+// unrepresentable character to a control byte (U+2192 becomes 0x1A on some
+// PowerShell builds) would otherwise fail the whole batch over a character the
+// author never meant as a control.
+func stripControlBytes(data []byte) []byte {
+	out := make([]byte, 0, len(data))
+	for _, b := range data {
+		if b < 0x20 && b != '\t' && b != '\n' && b != '\r' {
+			continue
+		}
+		out = append(out, b)
+	}
+	return out
+}

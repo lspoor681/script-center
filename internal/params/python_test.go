@@ -375,6 +375,16 @@ func TestDecodeJSONLines(t *testing.T) {
 		}
 	})
 
+	t.Run("raw control byte in a line is stripped", func(t *testing.T) {
+		got, err := decodeJSONLines([]byte("{\"path\":\"a.py\",\"help\":{\"source\":\"docstring\",\"description\":\"A1B2C3 \x1a C3B2A1\"}}\n"), 1)
+		if err != nil {
+			t.Fatalf("decodeJSONLines: %v", err)
+		}
+		if len(got) != 1 || got[0].Path != "a.py" {
+			t.Errorf("got %+v", got)
+		}
+	})
+
 	t.Run("no output is an error", func(t *testing.T) {
 		if _, err := decodeJSONLines(nil, 3); !errors.Is(err, ErrPython) {
 			t.Errorf("error = %v, want it to wrap ErrPython", err)
