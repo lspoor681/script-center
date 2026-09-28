@@ -14,7 +14,9 @@ import {
     OpenRoot as openRootBinding,
     RemoveRoot as removeRootBinding,
     RenderDocument as renderDocumentBinding,
+    RunScript as runScriptBinding,
     Status as statusBinding,
+    StopScript as stopScriptBinding,
     ToggleFavorite as toggleFavoriteBinding,
     Toolchains as toolchainsBinding,
     Workspace as workspaceBinding,
@@ -23,6 +25,7 @@ import type {
     DocumentView,
     ExplainView,
     RootView,
+    RunView,
     ScriptView,
     Status,
     Toolchain,
@@ -73,6 +76,14 @@ export function renderDocument(
 
 export function invalidate(root: string, rel: string): Promise<ScriptView> {
     return wire<Promise<ScriptView>>(invalidateBinding(root, rel));
+}
+
+export function runScript(root: string, rel: string, extra: string[]): Promise<RunView> {
+    return wire<Promise<RunView>>(runScriptBinding(root, rel, extra));
+}
+
+export function stopScript(id: string): Promise<void> {
+    return stopScriptBinding(id);
 }
 
 export function toolchains(): Promise<Toolchain[]> {

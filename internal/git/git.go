@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -292,6 +293,63 @@ func TrackedFiles(ctx context.Context, dir string) ([]string, error) {
 		}
 	}
 	return paths, nil
+}
+
+// Porcelain returns the per-path working-tree status of a repository, keyed by
+// the slash-separated path relative to dir. The value is git's two-character
+// status pair: the index status, then the worktree status.
+//
+// The scanner lists scripts with git's help, and this uses the same NUL-delimited
+// porcelain form, so its keys line up with scan entries. A renamed or copied
+// entry maps both the new and the original path to the same status, because the
+// scanner may be listing the script under either name.
+func Porcelain(ctx context.Context, dir string) (map[string]string, error) {
+	// --untracked-files=all lists each untracked file rather than collapsing an
+	// untracked directory into one "?? dir/" entry, which would hide a new
+	// script from its modified badge.
+	out, err := run(ctx, dir, "status", "--porcelain", "--untracked-files=all", "-z")
+	if err != nil {
+		return nil, fmt.Errorf("git status --porcelain in %s: %w", dir, err)
+	}
+	return parsePorcelain(string(out)), nil
+}
+
+// parsePorcelain reads the NUL-delimited porcelain v1 output produced with -z.
+func parsePorcelain(raw string) map[string]string {
+	statuses := map[string]string{}
+
+	// NUL terminates each record. A rename or copy appears as two records: the
+	// change itself with its new path, then the original path, so the scanner
+	// can badge a script whether it is listed under the new name or the old.
+	records := strings.Split(raw, "\x00")
+	for i := 0; i < len(records); i++ {
+		rec := records[i]
+		if rec == "" {
+			continue
+		}
+		statuses[filepath.ToSlash(rec[3:])] = rec[:2]
+		// The rename or copy flag is the index status (first character) for a
+		// staged move and the worktree status (second character) for one that
+		// only happened in the working directory, so either position counts.
+		if rec[0] == 'R' || rec[1] == 'R' || rec[0] == 'C' || rec[1] == 'C' {
+			if i+1 < len(records) && records[i+1] != "" {
+				statuses[filepath.ToSlash(records[i+1])] = rec[:2]
+				i++
+			}
+		}
+	}
+	return statuses
+}
+
+// RemoteURL returns the URL of the origin remote, or "" when the repository has
+// no such remote. A missing remote is normal for a local-only repository, so it
+// is reported as an absence rather than an error.
+func RemoteURL(ctx context.Context, dir string) (string, error) {
+	out, err := run(ctx, dir, "config", "--get", "remote.origin.url")
+	if err != nil {
+		return "", nil
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // run executes git in dir and returns stdout.

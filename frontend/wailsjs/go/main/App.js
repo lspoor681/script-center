@@ -30,8 +30,16 @@ export function RenderDocument(arg1, arg2, arg3) {
   return window['go']['main']['App']['RenderDocument'](arg1, arg2, arg3);
 }
 
+export function RunScript(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RunScript'](arg1, arg2, arg3);
+}
+
 export function Status() {
   return window['go']['main']['App']['Status']();
+}
+
+export function StopScript(arg1) {
+  return window['go']['main']['App']['StopScript'](arg1);
 }
 
 export function ToggleFavorite(arg1, arg2) {

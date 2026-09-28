@@ -54,6 +54,7 @@ export namespace app {
 	    metadata: params.Report;
 	    cached: boolean;
 	    inferred: boolean;
+	    modified?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScriptView(source);
@@ -74,6 +75,7 @@ export namespace app {
 	        this.metadata = this.convertValues(source["metadata"], params.Report);
 	        this.cached = source["cached"];
 	        this.inferred = source["inferred"];
+	        this.modified = source["modified"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -132,6 +134,99 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class GitCommit {
+	    oid: string;
+	    shortOid: string;
+	    author: string;
+	    // Go type: time
+	    date: any;
+	    subject: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitCommit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.oid = source["oid"];
+	        this.shortOid = source["shortOid"];
+	        this.author = source["author"];
+	        this.date = this.convertValues(source["date"], null);
+	        this.subject = source["subject"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class GitStatus {
+	    branch: string;
+	    detached: boolean;
+	    oid: string;
+	    upstream?: string;
+	    ahead: number;
+	    behind: number;
+	    staged: number;
+	    unstaged: number;
+	    untracked: number;
+	    conflicted: number;
+	    stashed: number;
+	    commit?: GitCommit;
+	    remote?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.branch = source["branch"];
+	        this.detached = source["detached"];
+	        this.oid = source["oid"];
+	        this.upstream = source["upstream"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.staged = source["staged"];
+	        this.unstaged = source["unstaged"];
+	        this.untracked = source["untracked"];
+	        this.conflicted = source["conflicted"];
+	        this.stashed = source["stashed"];
+	        this.commit = this.convertValues(source["commit"], GitCommit);
+	        this.remote = source["remote"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Meta {
 	    durationMs: number;
 	    fromCache: number;
@@ -161,6 +256,7 @@ export namespace app {
 	    isRepo: boolean;
 	    scripts: ScriptView[];
 	    warnings?: string[];
+	    git?: GitStatus;
 	    meta: Meta;
 	
 	    static createFrom(source: any = {}) {
@@ -175,6 +271,7 @@ export namespace app {
 	        this.isRepo = source["isRepo"];
 	        this.scripts = this.convertValues(source["scripts"], ScriptView);
 	        this.warnings = source["warnings"];
+	        this.git = this.convertValues(source["git"], GitStatus);
 	        this.meta = this.convertValues(source["meta"], Meta);
 	    }
 	
@@ -195,6 +292,24 @@ export namespace app {
 		    }
 		    return a;
 		}
+	}
+	export class RunView {
+	    id: string;
+	    command: string[];
+	    dir: string;
+	    warning?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.command = source["command"];
+	        this.dir = source["dir"];
+	        this.warning = source["warning"];
+	    }
 	}
 	
 	export class Status {

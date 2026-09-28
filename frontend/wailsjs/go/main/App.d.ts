@@ -16,7 +16,11 @@ export function RemoveRoot(arg1:string):Promise<any>;
 
 export function RenderDocument(arg1:string,arg2:string,arg3:string):Promise<app.DocumentView>;
 
+export function RunScript(arg1:string,arg2:string,arg3:Array<string>):Promise<app.RunView>;
+
 export function Status():Promise<app.Status>;
+
+export function StopScript(arg1:string):Promise<void>;
 
 export function ToggleFavorite(arg1:string,arg2:string):Promise<any>;
 

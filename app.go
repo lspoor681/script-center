@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"github.com/lspoor/script-center/internal/app"
 )
 
@@ -27,12 +29,15 @@ func NewApp() *App {
 }
 
 // startup is called when the app starts. The context is saved so the runtime
-// methods can reach it.
+// methods can reach it, and the runner's events are routed to the window.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	// A failure to load saved state is not worth refusing to open a window over:
 	// the user can add their roots again, and being unable to start at all would
 	// leave them with no way to do even that.
+	a.service.SetRunEmitter(func(name string, data any) {
+		runtime.EventsEmit(a.ctxOrBackground(), name, data)
+	})
 	_ = a.service.Start()
 }
 
@@ -84,6 +89,19 @@ func (a *App) RenderDocument(root, rel, path string) (*app.DocumentView, error) 
 // Invalidate forgets what is cached for one script and reads it again.
 func (a *App) Invalidate(root, rel string) (*app.ScriptView, error) {
 	return a.service.Invalidate(a.ctxOrBackground(), root, rel)
+}
+
+// RunScript starts a script and streams its output to the window as events.
+//
+// Extra is passed through to the script, so a user can run it with options
+// without editing anything.
+func (a *App) RunScript(root, rel string, extra []string) (*app.RunView, error) {
+	return a.service.RunScript(a.ctxOrBackground(), root, rel, extra)
+}
+
+// StopScript stops a running script.
+func (a *App) StopScript(id string) error {
+	return a.service.StopScript(id)
 }
 
 // ToggleFavorite stars or unstars a script.

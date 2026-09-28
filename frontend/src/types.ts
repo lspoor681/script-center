@@ -58,17 +58,16 @@ export type Help = {
 };
 
 export type ModuleRequirement = {
-    module: string;
+    name: string;
     version?: string;
-    optional?: boolean;
-    reason?: string;
 };
 
 export type Requirements = {
     modules?: ModuleRequirement[];
-    source?: string;
+    runAsAdministrator?: boolean;
+    psVersion?: string;
+    psEditions?: string[];
     pythonVersion?: string;
-    errors?: string[];
 };
 
 export type Report = {
@@ -76,22 +75,17 @@ export type Report = {
     help: Help;
     params?: Param[];
     requirements?: Requirements;
+    dotSources?: string[];
     warnings?: string[];
-    durationMS?: number;
-    cached?: boolean;
-    version?: number;
+    unparsedHelpBlock?: boolean;
 };
 
 export type Document = {
     path: string;
-    rel: string;
     kind: string;
-    name: string;
-    title?: string;
+    title: string;
     section?: string;
-    distance: number;
-    bytes: number;
-    truncated?: boolean;
+    excerpted: boolean;
 };
 
 export type Explanation = {
@@ -135,6 +129,44 @@ export type ScriptView = {
     metadata: Report;
     cached: boolean;
     inferred: boolean;
+    // modified is true when git reports a change to this script. It is only
+    // ever set for a script in a repository.
+    modified?: boolean;
+};
+
+// GitCommit is the most recent commit on a root's branch, as the strip shows it.
+export type GitCommit = {
+    oid: string;
+    shortOid: string;
+    author: string;
+    date: string;
+    subject: string;
+};
+
+// GitStatus is the repository state of a root, when the root is a repository.
+export type GitStatus = {
+    branch: string;
+    detached: boolean;
+    oid: string;
+    upstream?: string;
+    ahead: number;
+    behind: number;
+    staged: number;
+    unstaged: number;
+    untracked: number;
+    conflicted: number;
+    stashed: number;
+    commit?: GitCommit;
+    remote?: string;
+};
+
+// RunView is the start of a script run, returned from RunScript so the panel
+// can attach the streaming events to it by id.
+export type RunView = {
+    id: string;
+    command: string[];
+    dir: string;
+    warning?: string;
 };
 
 export type RootView = {
@@ -145,6 +177,8 @@ export type RootView = {
     scripts: ScriptView[];
     warnings?: string[];
     meta: Meta;
+    // git is the repository state of the root, when the root is a repository.
+    git?: GitStatus;
 };
 
 export type ExplainView = {

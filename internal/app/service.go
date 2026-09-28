@@ -84,6 +84,11 @@ type Service struct {
 	roots   map[string]*RootView
 	rootsMu sync.Mutex
 
+	// runner starts scripts and streams their output to the window as events.
+	// Zero runners are possible in tests that build a Service by hand, so the
+	// run methods cope with a nil one.
+	runner *Runner
+
 	// startup holds problems found while loading, which every root view repeats.
 	// They are kept here rather than stamped into each view, because a view is
 	// published and a published view is not written to.
@@ -110,6 +115,7 @@ func New(configDir string) *Service {
 		reader:    reader,
 		ws:        workspace.New(),
 		roots:     map[string]*RootView{},
+		runner:    NewRunner(),
 	}
 }
 

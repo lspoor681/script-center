@@ -301,3 +301,100 @@ func TestParseHeaderAheadBehind(t *testing.T) {
 		t.Errorf("OID = %q for an unborn branch, want empty", s.OID)
 	}
 }
+
+func TestPorcelainCleanRepo(t *testing.T) {
+	ctx := context.Background()
+
+	got, err := Porcelain(ctx, newRepo(t))
+	if err != nil {
+		t.Fatalf("Porcelain: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("Porcelain = %v on a clean repo, want an empty map", got)
+	}
+}
+
+func TestPorcelainReportsKinds(t *testing.T) {
+	dir := newRepo(t)
+	ctx := context.Background()
+
+	// Unstaged change to a tracked file.
+	write(t, dir, "README.md", "# changed\n")
+	// Staged new file.
+	write(t, dir, "staged.ps1", "# staged\n")
+	git(t, dir, "add", "staged.ps1")
+	// Untracked file in a nested directory, exercising slash normalization.
+	write(t, dir, "tools/do.sh", "#!/bin/sh\n")
+
+	got, err := Porcelain(ctx, dir)
+	if err != nil {
+		t.Fatalf("Porcelain: %v", err)
+	}
+
+	for path, want := range map[string]string{
+		"README.md":   " M",
+		"staged.ps1":  "A ",
+		"tools/do.sh": "??",
+	} {
+		if got[path] != want {
+			t.Errorf("Porcelain[%q] = %q, want %q", path, got[path], want)
+		}
+	}
+}
+
+func TestPorcelainIgnoresIgnoredFiles(t *testing.T) {
+	dir := newRepo(t)
+	write(t, dir, ".gitignore", "*.log\n")
+	git(t, dir, "add", ".gitignore")
+	git(t, dir, "commit", "-m", "ignore logs")
+	write(t, dir, "noise.log", "noise\n")
+
+	ctx := context.Background()
+	got, err := Porcelain(ctx, dir)
+	if err != nil {
+		t.Fatalf("Porcelain: %v", err)
+	}
+	if _, ok := got["noise.log"]; ok {
+		t.Error("Porcelain listed an ignored file")
+	}
+}
+
+func TestPorcelainRenameListsBothPaths(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "mv", "README.md", "README.rst")
+	git(t, dir, "add", "-A")
+
+	ctx := context.Background()
+	got, err := Porcelain(ctx, dir)
+	if err != nil {
+		t.Fatalf("Porcelain: %v", err)
+	}
+
+	// The scanner may list the script under either the new or the original
+	// path, so a rename must badge both.
+	if got["README.rst"] == "" {
+		t.Errorf("Porcelain missing the new path after a rename: %v", got)
+	}
+	if got["README.md"] == "" {
+		t.Errorf("Porcelain missing the original path after a rename: %v", got)
+	}
+}
+
+func TestRemoteURL(t *testing.T) {
+	ctx := context.Background()
+
+	// A repository created locally has no origin remote.
+	if url, err := RemoteURL(ctx, newRepo(t)); err != nil || url != "" {
+		t.Errorf("RemoteURL on a local-only repo = %q, %v; want empty, nil", url, err)
+	}
+
+	dir := newRepo(t)
+	git(t, dir, "remote", "add", "origin", "https://github.com/example/scripts.git")
+	url, err := RemoteURL(ctx, dir)
+	if err != nil {
+		t.Fatalf("RemoteURL: %v", err)
+	}
+	if url != "https://github.com/example/scripts.git" {
+		t.Errorf("RemoteURL = %q, want the configured origin URL", url)
+	}
+}

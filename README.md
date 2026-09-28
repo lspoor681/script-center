@@ -8,6 +8,9 @@ explains it, and shows the whole thing in one window.
 It is a Wails v2 application: a Go backend (the engine, the file access, the
 state) wrapped in a React 19 + TypeScript + Vite 7 frontend (the window).
 
+The feature backlog and completed work are tracked in
+[`docs/TODO.md`](docs/TODO.md).
+
 ## What it does
 
 - **Folders as roots.** Add any number of directories and give them names. A
@@ -22,7 +25,7 @@ state) wrapped in a React 19 + TypeScript + Vite 7 frontend (the window).
   show nothing over showing something wrong. Scripts whose inputs it cannot read
   (Rust, batch, or hand-parsed arguments) are still listed, with a warning that
   says so.
-- **Documentation.** Sidecar notes (same-stem `.md` files, or a `docs/` folder)
+- **ReadMe.** Sidecar notes (same-stem `.md` files, or a `docs/` folder)
   and project READMEs, rendered through sanitized HTML. A README is excerpted to
   the section that names the script, and the most specific document is shown
   first.

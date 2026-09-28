@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/lspoor/script-center/internal/git"
 	"github.com/lspoor/script-center/internal/params"
 	"github.com/lspoor/script-center/internal/scan"
 	"github.com/lspoor/script-center/internal/workspace"
@@ -71,6 +72,16 @@ func (s *Service) OpenRoot(ctx context.Context, root string) (*RootView, error) 
 	}
 	for _, entry := range result.Entries {
 		view.Scripts = append(view.Scripts, s.viewFor(entry, byPath[entry.Path], cachedBefore[entry.Path]))
+	}
+
+	// The git summary is part of a root's identity: it is what tells the user
+	// whether the folder in front of them is in sync with anywhere. It is
+	// best-effort, because a repository that cannot be described is still a
+	// repository with scripts in it, and a root that is not one simply has no
+	// git at all.
+	if result.IsRepo {
+		view.Git = s.gitFor(ctx, absolute)
+		markModified(view.Scripts, gitModified(ctx, absolute))
 	}
 
 	// Reports for scripts that have been deleted or renamed can never be hit
@@ -286,4 +297,75 @@ func (s *Service) relatedFor(view *RootView, script *ScriptView) []workspace.Sug
 		Name: script.Name, Dir: script.Dir, Kind: scan.KindScript,
 	}
 	return workspace.Suggest(target, result.Entries, relatedLimit)
+}
+
+// gitFor describes the repository state of a root, or nil when the root is not
+// a repository or git cannot describe it. Everything here is best-effort: a
+// repository that cannot be described is still a repository with scripts in it,
+// and the user is better served by seeing those than by an error page.
+func (s *Service) gitFor(ctx context.Context, root string) *GitStatus {
+	state, err := git.Status(ctx, root)
+	if err != nil || !state.IsRepo {
+		return nil
+	}
+	commit, err := git.LastCommit(ctx, root)
+	if err != nil {
+		// A repository with no commits still has a branch and a state; the
+		// commit is simply absent from its strip.
+		commit = git.Commit{}
+	}
+
+	status := &GitStatus{
+		Branch:     state.Branch,
+		Detached:   state.Detached,
+		OID:        state.OID,
+		Upstream:   state.Upstream,
+		Ahead:      state.Ahead,
+		Behind:     state.Behind,
+		Staged:     state.Staged,
+		Unstaged:   state.Unstaged,
+		Untracked:  state.Untracked,
+		Conflicted: state.Conflicted,
+		Stashed:    state.Stashed,
+	}
+	if commit.ShortOID != "" {
+		status.Commit = &GitCommit{
+			OID:      commit.OID,
+			ShortOID: commit.ShortOID,
+			Author:   commit.Author,
+			Date:     commit.Date,
+			Subject:  commit.Subject,
+		}
+	}
+	if remote, err := git.RemoteURL(ctx, root); err == nil {
+		status.Remote = remote
+	}
+	return status
+}
+
+// gitModified returns the set of paths git reports as changed under a root,
+// keyed by the scan's relative-path form so it can be looked up per script. A
+// repository that fails to be read leaves the set empty rather than failing the
+// root with it.
+func gitModified(ctx context.Context, root string) map[string]bool {
+	statuses, err := git.Porcelain(ctx, root)
+	if err != nil {
+		return map[string]bool{}
+	}
+	changed := make(map[string]bool, len(statuses))
+	for rel := range statuses {
+		changed[rel] = true
+	}
+	return changed
+}
+
+// markModified flags every script git reports as changed, in place. The badge is
+// a property of the row, not of the metadata read that started the view, so it
+// is a step on the view build rather than part of it.
+func markModified(scripts []ScriptView, changed map[string]bool) {
+	for i := range scripts {
+		if changed[scripts[i].Rel] {
+			scripts[i].Modified = true
+		}
+	}
 }

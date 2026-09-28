@@ -92,6 +92,10 @@ type ScriptView struct {
 	// Inferred reports that no harvester produced a form, whether because the
 	// language has no reader or because the file is a project.
 	Inferred bool `json:"inferred"`
+	// Modified reports that git sees a change to this script, which the list
+	// shows as a badge on the row. It is only ever true for a script in a
+	// repository; everywhere else it stays false.
+	Modified bool `json:"modified,omitempty"`
 }
 
 // NeedsForm reports whether this script can have a parameter form, which decides
@@ -123,8 +127,50 @@ type RootView struct {
 	// Warnings holds recoverable problems, such as a directory that could not
 	// be read or a language with no reader installed.
 	Warnings []string `json:"warnings,omitempty"`
+	// Git is the repository state of the root, when the root is a repository.
+	// It is absent otherwise, so the frontend can treat a non-repository as
+	// having no git to show at all.
+	Git *GitStatus `json:"git,omitempty"`
 	// Meta describes the read that produced this view.
 	Meta Meta `json:"meta"`
+}
+
+// GitStatus is the repository state of a root, as the frontend shows it.
+//
+// It is a separate shape from internal/git's State because that type reports
+// what git said while this one describes what the screen shows.
+type GitStatus struct {
+	// Branch is the checked-out branch, or the short commit hash or "(detached)"
+	// when HEAD is not on a branch.
+	Branch   string `json:"branch"`
+	Detached bool   `json:"detached"`
+	// OID is the commit HEAD resolves to.
+	OID string `json:"oid"`
+	// Upstream is the tracking branch, empty when there is none.
+	Upstream string `json:"upstream,omitempty"`
+	// Ahead and Behind are commits relative to Upstream.
+	Ahead  int `json:"ahead"`
+	Behind int `json:"behind"`
+	// Staged, Unstaged, Untracked and Conflicted are working-tree counters.
+	Staged     int `json:"staged"`
+	Unstaged   int `json:"unstaged"`
+	Untracked  int `json:"untracked"`
+	Conflicted int `json:"conflicted"`
+	// Stashed is the number of stashed entries.
+	Stashed int `json:"stashed"`
+	// Commit is the branch's most recent commit, absent when it has none.
+	Commit *GitCommit `json:"commit,omitempty"`
+	// Remote is the origin URL, empty when the repository has no origin.
+	Remote string `json:"remote,omitempty"`
+}
+
+// GitCommit is one commit, as the frontend shows it.
+type GitCommit struct {
+	OID      string    `json:"oid"`
+	ShortOID string    `json:"shortOid"`
+	Author   string    `json:"author"`
+	Date     time.Time `json:"date"`
+	Subject  string    `json:"subject"`
 }
 
 // ExplainView is everything known about one script's documentation.
@@ -169,6 +215,39 @@ type DocumentView struct {
 	// Error says why a document could not be shown, so the sidebar can list it
 	// and the reading pane can say why it is empty instead of rendering nothing.
 	Error string `json:"error,omitempty"`
+}
+
+// RunView is the start of a script run, returned to the frontend so the panel
+// can attach the streaming events to it by id.
+type RunView struct {
+	// ID is the session identifier, echoed in every output and exit event.
+	ID string `json:"id"`
+	// Command is the argv under which the script is running, shown so a user can
+	// see exactly how their script was invoked.
+	Command []string `json:"command"`
+	// Dir is the working directory the script runs in.
+	Dir string `json:"dir"`
+	// Warning explains something the user should know about the run, such as a
+	// script that asks to run as administrator but will run with the app's own
+	// privileges.
+	Warning string `json:"warning,omitempty"`
+}
+
+// RunOutput is one chunk of a running script's output, delivered as an event.
+type RunOutput struct {
+	ID    string `json:"id"`
+	Chunk string `json:"chunk"`
+}
+
+// RunExit reports how a run ended.
+type RunExit struct {
+	ID string `json:"id"`
+	// Code is the exit status, or the best the platform can report when the run
+	// was stopped rather than ended (see pty.Session.Wait).
+	Code int `json:"code"`
+	// Stopped is true when the user asked for the run to end, rather than the
+	// script ending on its own.
+	Stopped bool `json:"stopped"`
 }
 
 // viewFor builds the view of one entry, filling in a report when the reader had

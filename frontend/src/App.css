@@ -208,6 +208,116 @@ button:focus-visible {
     color: var(--error);
 }
 
+/* Search */
+
+.search {
+    position: relative;
+    display: block;
+    margin: 0 6px;
+}
+
+.search input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 26px 5px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--raised);
+    color: var(--text);
+    font-size: 12px;
+}
+
+.search input::placeholder {
+    color: var(--faint);
+}
+
+.search input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.search-clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0 4px;
+    line-height: 18px;
+    border-radius: 4px;
+    color: var(--faint);
+}
+
+.search-clear:hover {
+    color: var(--text);
+    background: var(--raised);
+}
+
+.filter-count {
+    margin: 0;
+    padding: 0 6px;
+    font-size: 11px;
+    color: var(--faint);
+}
+
+mark {
+    background: var(--accent);
+    color: var(--bg);
+    border-radius: 2px;
+    padding: 0 1px;
+    font-weight: 600;
+}
+
+/* Git strip */
+
+.git-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 4px;
+    margin: 0 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--raised);
+    font-size: 11px;
+    color: var(--dim);
+}
+
+.git-branch {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.git-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+.git-item.staged { color: var(--accent); }
+.git-item.unstaged { color: var(--warn); }
+.git-item.untracked { color: var(--faint); }
+.git-item.conflicted { color: var(--error); }
+
+.git-sync {
+    color: var(--faint);
+    white-space: nowrap;
+}
+
+.git-commit {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--faint);
+}
+
+.badge.modified {
+    color: var(--warn);
+    border-color: #5a4a1f;
+}
+
 .scripts {
     list-style: none;
     margin: 0;
@@ -296,6 +406,126 @@ button:focus-visible {
 
 .badge.cached {
     color: var(--faint);
+}
+
+/* Run panel */
+
+.run-bar {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.run-args {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--raised);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--mono);
+}
+
+.run-args::placeholder {
+    font-family: inherit;
+    color: var(--faint);
+}
+
+.run-args:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.run-panel {
+    margin-top: 14px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--raised);
+}
+
+.run-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+.run-name {
+    font-size: 12px;
+}
+
+.run-command {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--dim);
+    font-family: var(--mono);
+}
+
+.run-state {
+    margin-left: auto;
+    color: var(--faint);
+    white-space: nowrap;
+}
+
+.run-state.running {
+    color: var(--accent);
+}
+
+.run-state.stopped {
+    color: var(--warn);
+}
+
+.run-state.failed {
+    color: var(--error);
+}
+
+.run-output {
+    margin: 0;
+    padding: 8px;
+    border-radius: 5px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    max-height: 340px;
+}
+
+/* Context menu */
+
+.context-menu {
+    position: fixed;
+    z-index: 20;
+    min-width: 120px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--raised);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.context-item {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 4px;
+    text-align: left;
+    font-size: 12px;
+}
+
+.context-item:hover {
+    background: var(--accent);
+    color: #10131a;
 }
 
 /* Detail */
