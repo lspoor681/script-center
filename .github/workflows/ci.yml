@@ -136,15 +136,15 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "MINGW_BIN=$($gcc.DirectoryName)"
 
       # ubuntu-latest ships webkit2gtk-4.1 and no 4.0, so the tag is required
-      # rather than optional here.
+      # rather than optional here. Note: do NOT add NODE_ENV=production to
+      # this step. wails runs `npm install`, and with NODE_ENV=production npm
+      # omits devDependencies, leaving tsc and vite missing so the frontend
+      # build fails.
       - name: Build application
         shell: bash
         run: |
           if [ -n "$MINGW_BIN" ]; then export PATH="$MINGW_BIN:$PATH"; fi
           wails build -tags webkit2_41
-        env:
-          # Keeps the Linux build from embedding Vite dev-server defaults.
-          NODE_ENV: production
 
       - uses: actions/upload-artifact@v4
         with:
