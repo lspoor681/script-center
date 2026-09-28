@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/lspoor/script-center/internal/proc"
 )
 
 // harvestScript is the PowerShell side of the harvester. It is embedded rather
@@ -168,6 +170,7 @@ func (h *PowerShellHarvester) runBatch(ctx context.Context, exe, scriptPath stri
 	// harvest until the context deadline.
 	cmd := exec.CommandContext(runCtx, exe,
 		"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+	proc.NoWindow(cmd)
 	cmd.Stdin = bytes.NewReader(request)
 	cmd.Env = append(os.Environ(), "POWERSHELL_TELEMETRY_OPTOUT=1")
 

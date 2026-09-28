@@ -57,6 +57,9 @@ current plan of record.
 - [ ] **Input to a running script.** Send stdin to the child from the run panel
       (`pty.Session.Write` already exists; needs an input box).
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
+- [ ] **Reading stage events.** Replace the single "busy" string with emitted
+      stage events ("reading directory", "querying git", "harvesting parameters")
+      so a slow open shows what is happening instead of one opaque label.
 - [ ] **Git status refresh.** A trigger (window focus or a manual refresh) so the
       strip stays current after edits.
 - [ ] **Remote execution.** See the design sketch below.

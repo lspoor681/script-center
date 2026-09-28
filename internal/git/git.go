@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/lspoor/script-center/internal/proc"
 )
 
 // ErrNotARepository is returned by Status when the directory is not inside a
@@ -352,10 +354,18 @@ func RemoteURL(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// run executes git in dir and returns stdout.
-func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+// newGitCmd builds the command that runs git in dir. On Windows it stops the
+// helper from flashing a console window of its own (see internal/proc).
+func newGitCmd(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	proc.NoWindow(cmd)
+	return cmd
+}
+
+// run executes git in dir and returns stdout.
+func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := newGitCmd(ctx, dir, args...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

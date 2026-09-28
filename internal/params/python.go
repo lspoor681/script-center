@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/lspoor/script-center/internal/proc"
 )
 
 // harvestPythonScript is the Python side of the harvester, kept alongside
@@ -80,6 +82,7 @@ func FindPython() (string, error) {
 		if path, err := exec.LookPath(exe); err == nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			command := exec.CommandContext(ctx, path, args...)
+			proc.NoWindow(command)
 			err := command.Run()
 			cancel()
 			if err == nil {
@@ -158,6 +161,7 @@ func (h *PythonHarvester) runBatch(ctx context.Context, exe string, paths []stri
 	// temporary file is involved and a path containing shell metacharacters
 	// cannot influence anything.
 	command := exec.CommandContext(ctx, exe, append([]string{"-"}, paths...)...)
+	proc.NoWindow(command)
 	command.Stdin = strings.NewReader(harvestPythonScript)
 
 	var stdout, stderr bytes.Buffer
