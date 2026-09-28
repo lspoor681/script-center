@@ -139,7 +139,7 @@ func (s *Store) Save(w *Workspace) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("workspace: close temp: %w", err)
 	}
-	if err := os.Rename(tmpName, s.path); err != nil {
+	if err := renameFile(tmpName, s.path); err != nil {
 		return fmt.Errorf("workspace: rename into place: %w", err)
 	}
 	return nil

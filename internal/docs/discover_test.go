@@ -105,6 +105,38 @@ func TestDiscoverStopsAtRoot(t *testing.T) {
 	}
 }
 
+func TestDiscoverReportsAReadmeOnceWhateverItsCase(t *testing.T) {
+	// One readme is one document, whichever way it is capitalised. The candidate
+	// list holds several spellings of "readme" on purpose, and on a
+	// case-insensitive filesystem every spelling is the same file, so a
+	// lookup that tried each name in turn would report it once per spelling and
+	// a script would appear to be documented by three readmes.
+	//
+	// Each spelling is written to its own tree and must yield exactly one
+	// document, spelled the way the filesystem spells it.
+	for _, name := range []string{"README.md", "readme.md", "Readme.md"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			script := writeFile(t, dir, "rebuild.ps1", "param()\n")
+			writeFile(t, dir, name, "# Operations\n")
+
+			documents, err := Discover(script, dir)
+			if err != nil {
+				t.Fatalf("Discover: %v", err)
+			}
+			if len(documents) != 1 {
+				t.Fatalf("got %d documents for %s, want 1: %+v", len(documents), name, documents)
+			}
+			// The reported path has to be the one that can actually be opened,
+			// which on a case-insensitive filesystem is either spelling but on a
+			// case-sensitive one is only the one that was written.
+			if got := filepath.Base(documents[0].Path); got != name {
+				t.Errorf("Path = %q, want the file named %q", got, name)
+			}
+		})
+	}
+}
+
 func TestDiscoverExcerptsScriptSection(t *testing.T) {
 	dir := t.TempDir()
 	script := writeFile(t, dir, "rebuild-index.ps1", "param()\n")

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -647,15 +648,25 @@ func mustOpen(t *testing.T, service *Service, root string) *RootView {
 func TestScanWarningsReachTheView(t *testing.T) {
 	// A directory that cannot be read is worth saying so rather than silently
 	// vanishing from the list.
+	//
+	// Windows decides access by ACL and not by mode, so a directory created with
+	// mode 000 is still perfectly readable there and the scan finds nothing to
+	// warn about. Rewriting the ACL would work but is a machine-wide side effect
+	// a unit test has no business causing, so the case is left to the platforms
+	// where it can be set up honestly.
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows decides access by ACL rather than by mode, so a 000 directory stays readable")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("a permission test is meaningless as root")
+	}
+
 	root := scriptTree(t)
 	locked := filepath.Join(root, "locked")
 	if err := os.MkdirAll(locked, 0o000); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
-	if os.Geteuid() == 0 {
-		t.Skip("a permission test is meaningless as root")
-	}
 
 	service, _ := newTestService(t)
 	view, err := service.OpenRoot(context.Background(), root)

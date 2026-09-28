@@ -59,7 +59,16 @@ func Shell() []string {
 	if runtime.GOOS == "windows" {
 		// powershell.exe is used rather than pwsh because it is present on
 		// every supported Windows release, including those without pwsh.
-		return []string{"powershell.exe", "-NoLogo", "-NoProfile", "-Command", "-"}
+		//
+		// It is started interactively and not as "powershell.exe -Command -".
+		// Reading commands from standard input is what that flag asks for, but
+		// Windows PowerShell only honors it when standard input is a
+		// redirected pipe, and under a pseudo-terminal it is a console. Asked
+		// anyway, it prints its own help text and exits, so a session built on it
+		// is dead on arrival: nothing is ever read and nothing is ever run.
+		// Started interactively it reads from the console the pseudo-terminal
+		// provides, which is the whole point of attaching one.
+		return []string{"powershell.exe", "-NoLogo", "-NoProfile"}
 	}
 	return []string{"/bin/sh"}
 }

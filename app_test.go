@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -54,14 +55,30 @@ func TestConfigDirIsAbsoluteWhenTheEnvironmentCooperates(t *testing.T) {
 func TestConfigDirFollowsTheEnvironment(t *testing.T) {
 	// The user config directory is the one the platform designates, so the app
 	// keeps its state where the rest of the user's configuration lives.
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	if home, err := os.UserConfigDir(); err == nil {
-		if !filepath.IsAbs(home) {
-			t.Skipf("this platform has no XDG support (UserConfigDir = %q)", home)
-		}
+	//
+	// Which variable designates it differs, and the test has to set that one:
+	// XDG_CONFIG_HOME is accepted on Windows and then ignored, because Windows
+	// designates %AppData% instead. Setting only the Unix variable made this
+	// fail there rather than prove anything.
+	if runtime.GOOS == "windows" {
+		t.Setenv("AppData", t.TempDir())
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	}
-	if got := configDir(); got != filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "script-center") {
-		t.Errorf("configDir() = %q, want it under XDG_CONFIG_HOME", got)
+
+	home, err := os.UserConfigDir()
+	if err != nil {
+		t.Skipf("this platform designates no config directory: %v", err)
+	}
+	if !filepath.IsAbs(home) {
+		t.Skipf("this platform has no XDG support (UserConfigDir = %q)", home)
+	}
+
+	// The expectation is derived from the same call configDir makes, so the test
+	// checks that configDir follows the platform rather than that it follows
+	// this particular variable.
+	if got, want := configDir(), filepath.Join(home, "script-center"); got != want {
+		t.Errorf("configDir() = %q, want %q", got, want)
 	}
 }
 

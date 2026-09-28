@@ -46,6 +46,56 @@ type Document struct {
 // it would be worse than showing nothing.
 const MaxReadmeDepth = 4
 
+// readmesIn returns the project readmes in dir, in readmeNames preference order,
+// each spelled the way the filesystem actually spells it.
+//
+// The directory is listed once instead of every candidate name being stat-ed, and
+// that is a correctness fix rather than an optimisation. On a case-insensitive
+// filesystem README.md, readme.md and Readme.md are one file, so stat-ing each
+// name in turn reports the same file three times under three different paths. The
+// caller dedupes on the path string, which cannot see that the three are equal,
+// and a script would then appear to be documented by three readmes. Reading the
+// directory yields the real names and one entry each, so the result is the same
+// on a case-sensitive filesystem and the same on a case-insensitive one.
+func readmesIn(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// An unreadable or absent level simply has no readme. The scan reports
+		// the unreadable directory itself as a warning, so there is nothing to
+		// add here.
+		return nil
+	}
+
+	// Index the directory by lower case. A case-insensitive filesystem can hold
+	// only one of each spelling, so the first one listed is the only one there
+	// is; keeping the first also stops the result depending on directory order.
+	byLower := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		lower := strings.ToLower(entry.Name())
+		if _, exists := byLower[lower]; !exists {
+			byLower[lower] = entry.Name()
+		}
+	}
+
+	names := make([]string, 0, len(readmeNames))
+	claimed := make(map[string]bool, len(readmeNames))
+	for _, want := range readmeNames {
+		lower := strings.ToLower(want)
+		actual, present := byLower[lower]
+		// Two spellings of the same name resolve to the same file on a
+		// case-insensitive filesystem, so only the first may be claimed.
+		if !present || claimed[lower] {
+			continue
+		}
+		claimed[lower] = true
+		names = append(names, actual)
+	}
+	return names
+}
+
 // readmeNames are the file names tried at each level, in order of preference. The
 // list is not exhaustive on purpose: an exhaustive one would pick up CHANGELOG and
 // LICENSE, which are files a script listing should never offer as instructions.
@@ -138,7 +188,7 @@ func Discover(scriptPath, root string) ([]Document, error) {
 	// The walk stops at root so that a parent of the workspace is never reached.
 	current := dir
 	for depth := 0; depth <= MaxReadmeDepth; depth++ {
-		for _, name := range readmeNames {
+		for _, name := range readmesIn(current) {
 			add(filepath.Join(current, name), KindReadme)
 		}
 		if current == root {
