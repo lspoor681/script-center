@@ -25,8 +25,8 @@ current plan of record.
       argv, a Windows rename retry, portable tests, and a `wails build` verified
       locally on Windows. The race detector runs on Windows too, via a MinGW
       toolchain (`CGO_ENABLED=1`).
-- [x] **CI green.** Lint, test (ubuntu + windows, `-race`) and build jobs all
-      pass; `.gitattributes` pins checkouts to LF.
+- [x] **CI checks configured.** Lint, test (ubuntu + windows, `-race`) and
+      build jobs are configured; `.gitattributes` pins checkouts to LF.
 
 ## In progress
 
@@ -75,6 +75,9 @@ current plan of record.
       relative to the root; `commandFor` now resolves it to an absolute path
       before starting the run, so nested scripts no longer fail with
       "The Directory name is invalid".
+- [x] **Clean-checkout embed target.** A retained placeholder under
+      `frontend/dist` lets Go vet, tests, and lint compile before the frontend
+      build populates the directory.
 
 ## Backlog
 

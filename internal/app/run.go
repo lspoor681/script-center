@@ -53,7 +53,7 @@ type Runner struct {
 
 // run is one live run.
 type run struct {
-	session *pty.Session
+	session runSession
 	// blind is non-nil for a run that had to be started elevated in its own
 	// window. It delivers no output and cannot be stopped, but its exit code
 	// still arrives when it ends.
@@ -71,6 +71,16 @@ type blindProc interface {
 	Close() error
 }
 
+// runSession is everything the runner needs from a pseudo-terminal session,
+// so a test can fake a process start without launching one. pty.Session
+// satisfies it.
+type runSession interface {
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Wait() int
+	Close() error
+}
+
 // The elevation mechanisms are variables so tests can pin them without
 // actually elevating anything: a UAC prompt cannot appear in a test, and a
 // handful of lines of test should not depend on whether sudo happens to be
@@ -83,6 +93,13 @@ var (
 	// process is really started.
 	startElevated = func(argv []string, dir string) (blindProc, error) {
 		return elevate.StartElevated(argv, dir)
+	}
+	// startPty starts a process under a pseudo-terminal. It is a variable so a
+	// test can stub the process start itself: a run test that pins elevation
+	// must not depend on the interpreter named in the argv existing on the
+	// machine running it.
+	startPty = func(cfg pty.Config) (runSession, error) {
+		return pty.Start(cfg)
 	}
 )
 
@@ -119,7 +136,7 @@ func (r *Runner) Start(argv []string, dir string) (string, error) {
 		return "", ErrActiveRun
 	}
 
-	session, err := pty.Start(pty.Config{Argv: argv, Dir: dir, Env: runEnv()})
+	session, err := startPty(pty.Config{Argv: argv, Dir: dir, Env: runEnv()})
 	if err != nil {
 		return "", err
 	}
@@ -196,7 +213,7 @@ func (r *Runner) emitEvent(name string, data any) {
 
 // pump reads a run's output until the session closes, forwarding each chunk as
 // an event, and closes with the run:exit event.
-func (r *Runner) pump(session *pty.Session, id string) {
+func (r *Runner) pump(session runSession, id string) {
 	// A process exiting does not necessarily mean its output is drained, so
 	// the loop reads until io.EOF rather than stopping at the first error.
 	buf := make([]byte, 8192)

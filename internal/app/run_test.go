@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"github.com/lspoor/script-center/internal/detect"
 	"github.com/lspoor/script-center/internal/elevate"
 	"github.com/lspoor/script-center/internal/params"
+	"github.com/lspoor/script-center/internal/pty"
 	"github.com/lspoor/script-center/internal/scan"
 )
 
@@ -572,6 +574,13 @@ type blindFake struct {
 func (b *blindFake) Wait() int    { return b.code }
 func (b *blindFake) Close() error { return nil }
 
+type runSessionFake struct{}
+
+func (runSessionFake) Read([]byte) (int, error)    { return 0, io.EOF }
+func (runSessionFake) Write(p []byte) (int, error) { return len(p), nil }
+func (runSessionFake) Wait() int                   { return 0 }
+func (runSessionFake) Close() error                { return nil }
+
 // TestRunScriptElevatedInOwnWindow covers the blind path end to end: when
 // elevation is possible but cannot stay inline, the script starts in its own
 // window, the panel gets no output, and the exit code still lands as an event.
@@ -649,9 +658,6 @@ func TestRunnerBlindNotStoppable(t *testing.T) {
 // for elevation runs under the platform's elevation prefix, and the warning
 // still tells the user the run is elevated.
 func TestRunScriptElevatesWhenRequired(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("the local CI host cannot start Windows PowerShell to host the elevation test")
-	}
 	pinInterpreter(t, func(detect.Language) string { return "powershell.exe" })
 	wrapped := []string{}
 	pinElevation(t,
@@ -662,8 +668,17 @@ func TestRunScriptElevatesWhenRequired(t *testing.T) {
 		},
 		nil,
 	)
+	var startedArgv []string
+	originalStartPty := startPty
+	startPty = func(cfg pty.Config) (runSession, error) {
+		startedArgv = slices.Clone(cfg.Argv)
+		return runSessionFake{}, nil
+	}
+	t.Cleanup(func() { startPty = originalStartPty })
 
 	service, _ := newTestService(t)
+	events := &runEvents{}
+	service.SetRunEmitter(events.emit)
 	root := t.TempDir()
 	path := filepath.Join(root, "admin.ps1")
 
@@ -693,11 +708,20 @@ func TestRunScriptElevatesWhenRequired(t *testing.T) {
 	if run.Command[0] != "sudo" {
 		t.Errorf("Command = %q, want it to start with the elevation prefix", run.Command)
 	}
+	if !slices.Equal(startedArgv, run.Command) {
+		t.Errorf("started argv = %q, want %q", startedArgv, run.Command)
+	}
 	if run.Warning == "" || !strings.Contains(run.Warning, "administrator") {
 		t.Errorf("Warning = %q, want a mention of elevation", run.Warning)
 	}
-	t.Cleanup(func() { _ = service.StopScript(run.ID) })
 	if len(wrapped) != 1 {
 		t.Errorf("elevateWrap called %d times, want once", len(wrapped))
+	}
+	awaitTrue(t, func() bool {
+		_, ok := events.exit()
+		return ok
+	})
+	if exit, _ := events.exit(); exit.Code != 0 {
+		t.Errorf("exit.Code = %d, want 0", exit.Code)
 	}
 }

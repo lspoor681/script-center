@@ -39,6 +39,11 @@ session.
 
 ### Fixed
 
+- **Clean-checkout CI failed before tests ran.** The Go embed target had no
+  tracked frontend files because the generated `frontend/dist` output is
+  ignored. A retained placeholder now lets vet, tests, and lint compile from a
+  fresh checkout, and the inline-elevation test uses a fake terminal session
+  instead of launching external commands.
 - **Elevated runs reported a rewritten command.** The terminal library
   normalizes a bare `argv[0]`, mutating the caller's slice in place, so the
   panel showed a resolved `sudo.exe` instead of the script. `pty.Start` now

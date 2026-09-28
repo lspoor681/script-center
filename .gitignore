@@ -7,9 +7,10 @@ node_modules/
 # error rather than a warning: a fresh clone would not vet, test, lint, or build.
 # The placeholder keeps that target satisfiable until `wails build` fills it in.
 # Note the /* rather than a bare path: git cannot re-include a file whose parent
-# directory is excluded, so negating frontend/dist/.gitkeep would not work.
+# directory is excluded. The `all:` embed prefix includes dotfiles too; this
+# non-dot filename just makes the placeholder's purpose visible at a glance.
 frontend/dist/*
-!frontend/dist/.gitkeep
+!frontend/dist/DIST.placeholder
 
 # Rewritten by `wails build` to decide whether `npm install` is needed, so it is
 # cache state rather than a source file, and a stale copy only causes noise.
