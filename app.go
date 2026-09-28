@@ -94,14 +94,27 @@ func (a *App) Invalidate(root, rel string) (*app.ScriptView, error) {
 // RunScript starts a script and streams its output to the window as events.
 //
 // Extra is passed through to the script, so a user can run it with options
-// without editing anything.
-func (a *App) RunScript(root, rel string, extra []string) (*app.RunView, error) {
-	return a.service.RunScript(a.ctxOrBackground(), root, rel, extra)
+// without editing anything. RunAsAdmin asks for the script to start with the
+// user's administrator privileges, as the run panel's checkbox does; a script
+// that declares the requirement is elevated regardless.
+func (a *App) RunScript(root, rel string, extra []string, runAsAdmin bool) (*app.RunView, error) {
+	return a.service.RunScript(a.ctxOrBackground(), root, rel, extra, runAsAdmin)
 }
 
 // StopScript stops a running script.
 func (a *App) StopScript(id string) error {
 	return a.service.StopScript(id)
+}
+
+// SendInput answers a running script's prompt with one line.
+func (a *App) SendInput(id, text string) error {
+	return a.service.SendInput(id, text)
+}
+
+// RevealFile opens the file's folder in the platform's file manager, with the
+// file itself selected. It backs the right-click menu's "Open file location".
+func (a *App) RevealFile(path string) error {
+	return a.service.RevealFile(path)
 }
 
 // ToggleFavorite stars or unstars a script.

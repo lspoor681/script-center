@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lspoor/script-center/internal/detect"
+	"github.com/lspoor/script-center/internal/elevate"
 	"github.com/lspoor/script-center/internal/params"
 	"github.com/lspoor/script-center/internal/scan"
 )
@@ -292,6 +293,51 @@ func TestRunnerStopUnknownID(t *testing.T) {
 	}
 }
 
+// inputArgv runs a command that reads one line and echoes it back, on any OS.
+// The echo is prefixed so a test can tell the child actually read the line
+// from the terminal echo of the typed bytes.
+func inputArgv() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"powershell.exe", "-NoLogo", "-NoProfile", "-Command", "$l = Read-Host; Write-Output ('got:' + $l)"}
+	}
+	return []string{"/bin/sh", "-c", `read l; echo "got:$l"`}
+}
+
+// TestRunnerSendInput covers the interactive half of a run: a line sent to the
+// runner arrives in the child and is answered. It runs a real pseudo-terminal
+// with a real script that reads one line, which is the point of the feature.
+func TestRunnerSendInput(t *testing.T) {
+	runner := NewRunner()
+	events := &runEvents{}
+	runner.SetEmitter(events.emit)
+
+	id, err := runner.Start(inputArgv(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = runner.Stop(id) })
+
+	// The terminal buffers what is written, so a line that arrives before the
+	// script is reading is still consumed; the pause only keeps the send from
+	// racing the child's startup.
+	time.Sleep(300 * time.Millisecond)
+	const line = "offline-input-4711"
+	if err := runner.SendInput(id, line); err != nil {
+		t.Fatalf("SendInput: %v", err)
+	}
+
+	awaitTrue(t, func() bool {
+		return strings.Contains(events.output(), "got:"+line)
+	})
+}
+
+func TestRunnerSendInputUnknownID(t *testing.T) {
+	runner := NewRunner()
+	if err := runner.SendInput("run-0", "x"); !errors.Is(err, ErrNoRun) {
+		t.Errorf("SendInput on an unknown id = %v, want ErrNoRun", err)
+	}
+}
+
 func TestRunnerRefusesConcurrentRun(t *testing.T) {
 	runner := NewRunner()
 	runner.SetEmitter((&runEvents{}).emit)
@@ -312,7 +358,7 @@ func TestRunScriptErrors(t *testing.T) {
 
 	t.Run("a root that is not a directory", func(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "does-not-exist")
-		if _, err := service.RunScript(context.Background(), missing, "x.ps1", nil); err == nil {
+		if _, err := service.RunScript(context.Background(), missing, "x.ps1", nil, false); err == nil {
 			t.Fatal("RunScript on a missing root returned no error")
 		}
 	})
@@ -323,7 +369,7 @@ func TestRunScriptErrors(t *testing.T) {
 	}
 
 	t.Run("a script the root does not have", func(t *testing.T) {
-		if _, err := service.RunScript(context.Background(), root, "missing.ps1", nil); !errors.Is(err, ErrNoScript) {
+		if _, err := service.RunScript(context.Background(), root, "missing.ps1", nil, false); !errors.Is(err, ErrNoScript) {
 			t.Fatalf("err = %v, want ErrNoScript", err)
 		}
 	})
@@ -361,7 +407,7 @@ func TestRunScriptStreamsEvents(t *testing.T) {
 	}
 	script := scriptAt(t, view, rel)
 
-	run, err := service.RunScript(context.Background(), root, script.Rel, []string{"--count", "3"})
+	run, err := service.RunScript(context.Background(), root, script.Rel, []string{"--count", "3"}, false)
 	if err != nil {
 		t.Fatalf("RunScript: %v", err)
 	}
@@ -389,14 +435,172 @@ func TestRunScriptStreamsEvents(t *testing.T) {
 	}
 }
 
-// TestRunScriptWarnsAboutElevation checks the one piece of RunScript that is
-// not about starting the process: a script that asks to be elevated gets told
-// it will not be.
-func TestRunScriptWarnsAboutElevation(t *testing.T) {
+// pinElevation fixes the elevation mechanisms for the duration of a test, so
+// that no test ever reaches the real ones: detectElevation can answer without
+// inspecting the machine, and Wrap and StartElevated can be stubbed so a UAC
+// prompt never appears and nothing is actually elevated.
+func pinElevation(t *testing.T, detect func() elevate.Status, wrap func([]string) ([]string, error), start func([]string, string) (blindProc, error)) {
+	t.Helper()
+	originalDetect, originalWrap, originalStart := detectElevation, elevateWrap, startElevated
+	detectElevation, elevateWrap, startElevated = detect, wrap, start
+	t.Cleanup(func() {
+		detectElevation, elevateWrap, startElevated = originalDetect, originalWrap, originalStart
+	})
+}
+
+func TestRunScriptRefusesElevationWhenUnavailable(t *testing.T) {
+	pinElevation(t,
+		func() elevate.Status { return elevate.Status{Available: false, Method: "sudo", Hint: "install sudo"} },
+		nil,
+		nil,
+	)
+	service, _ := newTestService(t)
+	root := t.TempDir()
+	path := filepath.Join(root, "admin.ps1")
+	service.publishRoot(root, &RootView{
+		Root: root,
+		Scripts: []ScriptView{{
+			Path: path, Root: root, Rel: "admin.ps1", Name: filepath.Base(path), Dir: root,
+			Kind: string(scan.KindScript), Language: string(detect.PowerShell), Lang: "PowerShell",
+			Metadata: params.Report{
+				Path:         path,
+				Help:         params.Help{Source: params.HelpSourceNone},
+				Requirements: params.Requirements{RunAsAdministrator: true},
+			},
+		}},
+	})
+
+	_, err := service.RunScript(context.Background(), root, "admin.ps1", nil, false)
+	if err == nil || !strings.Contains(err.Error(), "install sudo") {
+		t.Fatalf("RunScript = %v, want an error telling the user how to enable elevation", err)
+	}
+}
+
+// TestRunScriptRefusesManualElevationWhenUnavailable is the same refusal for a
+// script that never declared the requirement: the checkbox asks, and the answer
+// has to be no when elevation cannot be had.
+func TestRunScriptRefusesManualElevationWhenUnavailable(t *testing.T) {
+	pinElevation(t,
+		func() elevate.Status { return elevate.Status{Available: false, Method: "sudo", Hint: "install sudo"} },
+		nil,
+		nil,
+	)
+	service, _ := newTestService(t)
+	root := t.TempDir()
+	path := filepath.Join(root, "plain.ps1")
+	service.publishRoot(root, &RootView{
+		Root: root,
+		Scripts: []ScriptView{{
+			Path: path, Root: root, Rel: "plain.ps1", Name: filepath.Base(path), Dir: root,
+			Kind: string(scan.KindScript), Language: string(detect.PowerShell), Lang: "PowerShell",
+			Metadata: params.Report{Path: path, Help: params.Help{Source: params.HelpSourceNone}},
+		}},
+	})
+
+	if _, err := service.RunScript(context.Background(), root, "plain.ps1", nil, true); err == nil {
+		t.Fatal("RunScript with runAsAdmin on a machine without elevation returned no error")
+	}
+}
+
+// blindFake is a blindProc whose exit code can be fixed by a test, so the
+// runner's blind path is exercised without starting any real process.
+type blindFake struct {
+	code int
+}
+
+func (b *blindFake) Wait() int    { return b.code }
+func (b *blindFake) Close() error { return nil }
+
+// TestRunScriptElevatedInOwnWindow covers the blind path end to end: when
+// elevation is possible but cannot stay inline, the script starts in its own
+// window, the panel gets no output, and the exit code still lands as an event.
+func TestRunScriptElevatedInOwnWindow(t *testing.T) {
+	pinElevation(t,
+		func() elevate.Status { return elevate.Status{Available: true, Inline: false, Method: "runas"} },
+		func([]string) ([]string, error) { panic("Wrap must not be called for a blind run") },
+		func(argv []string, dir string) (blindProc, error) {
+			return &blindFake{code: 7}, nil
+		},
+	)
+	service, _ := newTestService(t)
+	events := &runEvents{}
+	service.SetRunEmitter(events.emit)
+
+	root := t.TempDir()
+	path := filepath.Join(root, "admin.ps1")
+	service.publishRoot(root, &RootView{
+		Root: root,
+		Scripts: []ScriptView{{
+			Path: path, Root: root, Rel: "admin.ps1", Name: filepath.Base(path), Dir: root,
+			Kind: string(scan.KindScript), Language: string(detect.PowerShell), Lang: "PowerShell",
+			Metadata: params.Report{
+				Path:         path,
+				Help:         params.Help{Source: params.HelpSourceNone},
+				Requirements: params.Requirements{RunAsAdministrator: true},
+			},
+		}},
+	})
+
+	run, err := service.RunScript(context.Background(), root, "admin.ps1", nil, false)
+	if err != nil {
+		t.Fatalf("RunScript: %v", err)
+	}
+	if !run.Blind {
+		t.Error("RunView.Blind = false, want true for a separate-window run")
+	}
+	if run.Warning == "" || !strings.Contains(run.Warning, "administrator") {
+		t.Errorf("Warning = %q, want a mention of elevation", run.Warning)
+	}
+
+	awaitTrue(t, func() bool {
+		_, ok := events.exit()
+		return ok
+	})
+	if exit, _ := events.exit(); exit.Code != 7 {
+		t.Errorf("exit.Code = %d, want 7", exit.Code)
+	}
+	if got := events.output(); got != "" {
+		t.Errorf("output = %q, want none for a separate-window run", got)
+	}
+	if service.runner.Active() {
+		t.Error("Active() = true after the exit event")
+	}
+}
+
+// TestRunnerBlindNotStoppable checks that the runner itself refuses to stop a
+// run whose window it cannot reach, which is what keeps the panel honest
+// about a blind run.
+func TestRunnerBlindNotStoppable(t *testing.T) {
+	runner := NewRunner()
+	id, err := runner.StartBlind(&blindFake{code: 0})
+	if err != nil {
+		t.Fatalf("StartBlind: %v", err)
+	}
+	if err := runner.Stop(id); err == nil || !strings.Contains(err.Error(), "cannot be stopped") {
+		t.Errorf("Stop = %v, want an error saying the run cannot be stopped", err)
+	}
+	if err := runner.SendInput(id, "y"); err == nil || !strings.Contains(err.Error(), "cannot take input") {
+		t.Errorf("SendInput = %v, want an error saying the run cannot take input", err)
+	}
+}
+
+// TestRunScriptElevatesWhenRequired checks the inline path: a script that asks
+// for elevation runs under the platform's elevation prefix, and the warning
+// still tells the user the run is elevated.
+func TestRunScriptElevatesWhenRequired(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("the local CI host cannot start Windows PowerShell to host the elevation test")
 	}
 	pinInterpreter(t, func(detect.Language) string { return "powershell.exe" })
+	wrapped := []string{}
+	pinElevation(t,
+		func() elevate.Status { return elevate.Status{Available: true, Inline: true, Method: "sudo"} },
+		func(argv []string) ([]string, error) {
+			wrapped = append(wrapped, "sudo")
+			return append([]string{"sudo"}, argv...), nil
+		},
+		nil,
+	)
 
 	service, _ := newTestService(t)
 	root := t.TempDir()
@@ -418,12 +622,21 @@ func TestRunScriptWarnsAboutElevation(t *testing.T) {
 		}},
 	})
 
-	run, err := service.RunScript(context.Background(), root, "admin.ps1", nil)
+	run, err := service.RunScript(context.Background(), root, "admin.ps1", nil, false)
 	if err != nil {
 		t.Fatalf("RunScript: %v", err)
+	}
+	if run.Blind {
+		t.Error("RunView.Blind = true, want a pty-backed inline run")
+	}
+	if run.Command[0] != "sudo" {
+		t.Errorf("Command = %q, want it to start with the elevation prefix", run.Command)
 	}
 	if run.Warning == "" || !strings.Contains(run.Warning, "administrator") {
 		t.Errorf("Warning = %q, want a mention of elevation", run.Warning)
 	}
 	t.Cleanup(func() { _ = service.StopScript(run.ID) })
+	if len(wrapped) != 1 {
+		t.Errorf("elevateWrap called %d times, want once", len(wrapped))
+	}
 }

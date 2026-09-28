@@ -30,8 +30,16 @@ export function RenderDocument(arg1, arg2, arg3) {
   return window['go']['main']['App']['RenderDocument'](arg1, arg2, arg3);
 }
 
-export function RunScript(arg1, arg2, arg3) {
-  return window['go']['main']['App']['RunScript'](arg1, arg2, arg3);
+export function RevealFile(arg1) {
+  return window['go']['main']['App']['RevealFile'](arg1);
+}
+
+export function RunScript(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RunScript'](arg1, arg2, arg3, arg4);
+}
+
+export function SendInput(arg1, arg2) {
+  return window['go']['main']['App']['SendInput'](arg1, arg2);
 }
 
 export function Status() {

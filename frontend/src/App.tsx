@@ -28,6 +28,7 @@ type RunState = {
     output: string;
     status: RunStatus;
     code?: number;
+    blind?: boolean;
 };
 
 // The context menu needs where it opened and what it was opened for.
@@ -56,6 +57,14 @@ function App() {
     // menu without a script being picked.
     const [run, setRun] = useState<RunState | null>(null);
     const [extraArgs, setExtraArgs] = useState('');
+    // Requests the run start with administrator privileges, as the run bar's
+    // checkbox. A script whose metadata demands elevation is checked and
+    // locked regardless of what a user picks.
+    const [runAsAdmin, setRunAsAdmin] = useState(false);
+    // The text typed into the run panel for the still-running script. It is
+    // kept in state rather than read from the input so that Send is the
+    // single place a line leaves the panel.
+    const [runInput, setRunInput] = useState('');
     // activeIdRef lets a late event from an already-finished run be recognized
     // and ignored: ids are unique per run, and the frontend only ever watches
     // the most recent one.
@@ -261,7 +270,7 @@ function App() {
         };
     }, [handleRunOutput, handleRunExit]);
 
-    const startRun = useCallback(async (script: types.ScriptView, extra: string) => {
+    const startRun = useCallback(async (script: types.ScriptView, extra: string, raised: boolean) => {
         setRun({
             id: '',
             scriptName: script.name,
@@ -271,7 +280,7 @@ function App() {
             output: '',
         });
         try {
-            const view = await api.runScript(script.root, script.rel, splitArgs(extra));
+            const view = await api.runScript(script.root, script.rel, splitArgs(extra), raised);
             activeIdRef.current = view.id;
             setRun({
                 id: view.id,
@@ -281,6 +290,7 @@ function App() {
                 warning: view.warning,
                 status: 'running',
                 output: '',
+                blind: view.blind,
             });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -289,6 +299,22 @@ function App() {
                 : null));
         }
     }, []);
+
+    // A line typed into the run panel is written to the script's input, which
+    // answers prompts such as the one sudo shows for a password. A blind run
+    // has no pipe to write to, so the input is hidden for it.
+    const sendInput = useCallback(async (text: string) => {
+        if (!run || run.id === '' || !text) {
+            return;
+        }
+        try {
+            await api.sendInput(run.id, text);
+            setRunInput('');
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            setRun((current) => (current ? {...current, error: message} : null));
+        }
+    }, [run]);
 
     const stopRun = useCallback(async (id: string) => {
         try {
@@ -328,11 +354,25 @@ function App() {
             {
                 label: 'Run',
                 run: (script: types.ScriptView) => {
-                    void startRun(script, '');
+                    void startRun(script, '', false);
+                },
+            },
+            {
+                label: 'Run (Administrator)',
+                run: (script: types.ScriptView) => {
+                    void startRun(script, '', true);
+                },
+            },
+            {
+                label: 'Open file location',
+                run: (script: types.ScriptView) => {
+                    api.revealFile(script.path).catch((err) => {
+                        fail('opening the file location', err);
+                    });
                 },
             },
         ],
-        [startRun],
+        [startRun, fail],
     );
 
     const missing = useMemo(
@@ -351,6 +391,10 @@ function App() {
     // Hoisted so the markup can branch on the count without repeating the
     // optional chain, which would leave TypeScript unable to narrow it.
     const detailParams = picked?.metadata.params ?? [];
+
+    // A script can demand elevation in its metadata; the checkbox is then
+    // checked and locked, so a user cannot accidentally run it unprivileged.
+    const adminRequired = picked?.metadata.requirements?.runAsAdministrator ?? false;
 
     // The GitHub browse target, when the selected root has a GitHub remote.
     // Hoisted for the same reason the parameter count is: the strip branches on
@@ -554,14 +598,30 @@ function App() {
                                     onChange={(e) => setExtraArgs(e.target.value)}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
-                                            void startRun(picked, extraArgs);
+                                            void startRun(picked, extraArgs, adminRequired || runAsAdmin);
                                         }
                                     }}
                                 />
+                                <label
+                                    className="run-admin"
+                                    title={
+                                        adminRequired
+                                            ? 'This script asks to run as administrator'
+                                            : 'Run with administrator privileges'
+                                    }
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={adminRequired || runAsAdmin}
+                                        disabled={run?.status === 'running' || adminRequired}
+                                        onChange={(e) => setRunAsAdmin(e.target.checked)}
+                                    />
+                                    Admin
+                                </label>
                                 <button
                                     className="primary"
                                     disabled={run?.status === 'running'}
-                                    onClick={() => void startRun(picked, extraArgs)}
+                                    onClick={() => void startRun(picked, extraArgs, adminRequired || runAsAdmin)}
                                 >
                                     ▶ Run
                                 </button>
@@ -733,7 +793,7 @@ function App() {
                                 {run.status === 'stopped' && 'Stopped'}
                                 {run.status === 'failed' && 'Could not start'}
                             </span>
-                            {run.status === 'running' && (
+                            {run.status === 'running' && !run.blind && (
                                 <button className="ghost" onClick={() => void stopRun(run.id)}>
                                     Stop
                                 </button>
@@ -741,9 +801,38 @@ function App() {
                         </div>
                         {run.warning && <p className="warning">{run.warning}</p>}
                         {run.error && <p className="error">{run.error}</p>}
+                        {run.blind && run.status === 'running' && (
+                            <p className="notice">
+                                Running in its own elevated window. This panel cannot see its
+                                output, send it input, or stop it; the exit code arrives when it
+                                closes.
+                            </p>
+                        )}
                         <pre className="run-output">
                             {run.output || (run.status === 'running' ? 'Running…' : '(no output)')}
                         </pre>
+                        {run.status === 'running' && !run.blind && (
+                            <div className="run-input-row">
+                                <input
+                                    className="run-input"
+                                    placeholder="Input for the running script…"
+                                    value={runInput}
+                                    onChange={(e) => setRunInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            void sendInput(runInput);
+                                        }
+                                    }}
+                                />
+                                <button
+                                    className="primary"
+                                    disabled={!runInput.trim()}
+                                    onClick={() => void sendInput(runInput)}
+                                >
+                                    Send
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </section>

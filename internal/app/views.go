@@ -228,9 +228,11 @@ type RunView struct {
 	// Dir is the working directory the script runs in.
 	Dir string `json:"dir"`
 	// Warning explains something the user should know about the run, such as a
-	// script that asks to run as administrator but will run with the app's own
-	// privileges.
+	// script that asked to run as administrator.
 	Warning string `json:"warning,omitempty"`
+	// Blind is true when the run was elevated in a window of its own, so its
+	// output never arrives here and it cannot be stopped or sent input.
+	Blind bool `json:"blind,omitempty"`
 }
 
 // RunOutput is one chunk of a running script's output, delivered as an event.

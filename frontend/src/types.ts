@@ -161,12 +161,15 @@ export type GitStatus = {
 };
 
 // RunView is the start of a script run, returned from RunScript so the panel
-// can attach the streaming events to it by id.
+// can attach the streaming events to it by id. blind is true when the run was
+// started in its own window with administrator privileges, so it cannot send
+// output or accept input or be stopped from this panel.
 export type RunView = {
     id: string;
     command: string[];
     dir: string;
     warning?: string;
+    blind?: boolean;
 };
 
 export type RootView = {

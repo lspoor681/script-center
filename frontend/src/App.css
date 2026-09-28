@@ -438,6 +438,30 @@ mark {
     border-color: var(--accent);
 }
 
+.run-admin {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--raised);
+    color: var(--dim);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.run-admin input {
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.run-admin:has(input:disabled) {
+    opacity: 0.8;
+    cursor: default;
+}
+
 .run-panel {
     margin-top: 14px;
     padding: 10px;
@@ -499,6 +523,43 @@ mark {
     word-break: break-word;
     overflow-y: auto;
     max-height: 340px;
+}
+
+.notice {
+    margin: 0 0 8px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    background: var(--raised);
+    color: var(--dim);
+    font-size: 12px;
+}
+
+.run-input-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.run-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--mono);
+}
+
+.run-input::placeholder {
+    font-family: inherit;
+    color: var(--faint);
+}
+
+.run-input:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 /* Context menu */

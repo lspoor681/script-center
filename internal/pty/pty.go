@@ -83,6 +83,10 @@ type Session struct {
 }
 
 // Start launches cfg under a new pseudo-terminal.
+//
+// Start does not modify cfg.Argv. The underlying terminal library resolves a
+// bare argv[0] to a full path in place, which would otherwise write back into
+// the caller's slice and into any view built from it.
 func Start(cfg Config) (*Session, error) {
 	if len(cfg.Argv) == 0 {
 		return nil, errors.New("pty: Argv is required")
@@ -90,8 +94,9 @@ func Start(cfg Config) (*Session, error) {
 	if cfg.Size == (crosspty.TermSize{}) {
 		cfg.Size = DefaultSize
 	}
+	argv := append([]string(nil), cfg.Argv...)
 	p, err := crosspty.Start(crosspty.CommandConfig{
-		Argv: cfg.Argv,
+		Argv: argv,
 		Dir:  cfg.Dir,
 		Env:  cfg.Env,
 		Size: cfg.Size,

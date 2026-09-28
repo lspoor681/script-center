@@ -14,7 +14,9 @@ import {
     OpenRoot as openRootBinding,
     RemoveRoot as removeRootBinding,
     RenderDocument as renderDocumentBinding,
+    RevealFile as revealFileBinding,
     RunScript as runScriptBinding,
+    SendInput as sendInputBinding,
     Status as statusBinding,
     StopScript as stopScriptBinding,
     ToggleFavorite as toggleFavoriteBinding,
@@ -78,8 +80,21 @@ export function invalidate(root: string, rel: string): Promise<ScriptView> {
     return wire<Promise<ScriptView>>(invalidateBinding(root, rel));
 }
 
-export function runScript(root: string, rel: string, extra: string[]): Promise<RunView> {
-    return wire<Promise<RunView>>(runScriptBinding(root, rel, extra));
+export function runScript(
+    root: string,
+    rel: string,
+    extra: string[],
+    runAsAdmin: boolean,
+): Promise<RunView> {
+    return wire<Promise<RunView>>(runScriptBinding(root, rel, extra, runAsAdmin));
+}
+
+export function sendInput(id: string, text: string): Promise<void> {
+    return sendInputBinding(id, text);
+}
+
+export function revealFile(path: string): Promise<void> {
+    return revealFileBinding(path);
 }
 
 export function stopScript(id: string): Promise<void> {

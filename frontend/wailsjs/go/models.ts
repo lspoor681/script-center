@@ -298,6 +298,7 @@ export namespace app {
 	    command: string[];
 	    dir: string;
 	    warning?: string;
+	    blind?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunView(source);
@@ -309,6 +310,7 @@ export namespace app {
 	        this.command = source["command"];
 	        this.dir = source["dir"];
 	        this.warning = source["warning"];
+	        this.blind = source["blind"];
 	    }
 	}
 	
