@@ -1,7 +1,19 @@
 # Wails / build output
 build/bin
-frontend/dist
 node_modules/
+
+# The built frontend is ignored but the directory itself is not, because main.go
+# embeds all:frontend/dist and an embed target that matches nothing is a compile
+# error rather than a warning: a fresh clone would not vet, test, lint, or build.
+# The placeholder keeps that target satisfiable until `wails build` fills it in.
+# Note the /* rather than a bare path: git cannot re-include a file whose parent
+# directory is excluded, so negating frontend/dist/.gitkeep would not work.
+frontend/dist/*
+!frontend/dist/.gitkeep
+
+# Rewritten by `wails build` to decide whether `npm install` is needed, so it is
+# cache state rather than a source file, and a stale copy only causes noise.
+frontend/package.json.md5
 
 # Go
 *.test
