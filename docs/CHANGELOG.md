@@ -63,9 +63,12 @@ checked off or retired in the TODO at the end of each session.
   ignored. A retained placeholder now lets vet, tests, and lint compile from a
   fresh checkout, and the inline-elevation test uses a fake terminal session
   instead of launching external commands. The placeholder is a tracked file that
-  nothing regenerates, so it is fragile: the parameter-encoding work below
-  removed it again and broke lint and tests a second time, and `make clean`
-  deletes it with the rest of the directory.
+  nothing regenerates, so it is fragile, and it has now been deleted three times:
+  the parameter-encoding work below removed it once, and the documentation
+  rewrite removed it again because the deletion was sitting unstaged in the
+  working tree. `make clean` deletes it with the rest of the directory too. It
+  is restored, and `go vet` is verified against a checkout that contains
+  nothing but the placeholder.
 - **The backend failed its Windows test run for five unrelated reasons.**
   `docs.Discover` checked every README spelling separately, so a
   case-insensitive filesystem reported one file under three paths; `pty.Shell`
