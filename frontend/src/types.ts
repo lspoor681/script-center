@@ -143,6 +143,27 @@ export type GitCommit = {
     subject: string;
 };
 
+// The stage names the backend sends, mirrored from the Stage constants in
+// internal/app/views.go. They are spelled out here rather than generated because
+// the Wails generator emits Go types, not string constants, so there is nothing
+// to generate from.
+export const READ_STAGES = {
+    scan: 'reading directory',
+    harvest: 'harvesting parameters',
+    git: 'querying git',
+} as const;
+
+// ReadStage is one step of a directory read, sent from the backend as it goes so
+// a slow open says what it is waiting on rather than showing one opaque label.
+export type ReadStage = {
+    root: string;
+    stage: string;
+    language?: string;
+    scripts?: number;
+    done: number;
+    total: number;
+};
+
 // GitStatus is the repository state of a root, when the root is a repository.
 export type GitStatus = {
     branch: string;

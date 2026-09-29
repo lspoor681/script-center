@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -1034,4 +1035,148 @@ func readableIn(t *testing.T, root string) []string {
 		}
 	}
 	return out
+}
+
+// gitRepo turns a root into a repository with one commit, so a read has a git
+// stage to report. It reports whether git could be used at all, because a
+// machine without it should skip the assertion rather than fail it.
+func gitRepo(t *testing.T, root string) bool {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		return false
+	}
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "Test")
+	run("add", "-A")
+	run("commit", "-q", "-m", "initial")
+	return true
+}
+
+func TestOpenRootReportsWhatItIsWaitingOn(t *testing.T) {
+	// A read that shows one opaque label leaves the user unable to tell a slow
+	// read from a stuck one. The three stages say which part of the read is
+	// running, and the per-language events inside the harvest say which toolchain
+	// is starting, because that is where the time actually goes.
+	service, _ := newTestService(t)
+	root := scriptTree(t)
+	if !gitRepo(t, root) {
+		t.Skip("git is not installed, so this root has no git stage to report")
+	}
+
+	var stages []ReadStage
+	service.SetStageEmitter(func(name string, data any) {
+		if name != "read:stage" {
+			t.Errorf("event name = %q, want read:stage", name)
+		}
+		stage, ok := data.(ReadStage)
+		if !ok {
+			t.Errorf("unhandled event type %T", data)
+			return
+		}
+		stages = append(stages, stage)
+	})
+
+	if _, err := service.OpenRoot(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+
+	// Every event names the root, because a read is asynchronous and the window
+	// has to be able to drop a stage for a folder the user has left.
+	for i, stage := range stages {
+		if stage.Root != root {
+			t.Errorf("stage %d root = %q, want %q", i, stage.Root, root)
+		}
+	}
+	if len(stages) == 0 {
+		t.Fatal("a read reported no stages at all")
+	}
+
+	// The stages run in the order the read does them, and the first is always the
+	// directory.
+	if stages[0].Stage != StageScan {
+		t.Errorf("first stage = %q, want %q", stages[0].Stage, StageScan)
+	}
+	var names []string
+	for _, stage := range stages {
+		names = append(names, stage.Stage)
+	}
+	scanAt, harvestAt, gitAt := -1, -1, -1
+	for i, name := range names {
+		switch name {
+		case StageScan:
+			scanAt = i
+		case StageHarvest:
+			if harvestAt < 0 {
+				harvestAt = i
+			}
+		case StageGit:
+			gitAt = i
+		}
+	}
+	if scanAt != 0 {
+		t.Errorf("the directory should be reported first, at 0, got %d", scanAt)
+	}
+	if harvestAt < 0 {
+		t.Fatalf("the harvest was never reported: %v", names)
+	}
+	if gitAt < 0 {
+		t.Fatalf("a repository should report a git stage: %v", names)
+	}
+	if scanAt >= harvestAt || harvestAt >= gitAt {
+		t.Errorf("stages out of order: %v", names)
+	}
+
+	// The harvest announces itself once with no language, then reports each
+	// language as it starts.
+	perLanguage := 0
+	for _, stage := range stages {
+		if stage.Stage == StageHarvest && stage.Language != "" {
+			perLanguage++
+		}
+	}
+	if perLanguage == 0 {
+		t.Errorf("the harvest named no language, so the slow part is still opaque: %v", stages)
+	}
+}
+
+func TestOpenRootReportsNoGitStageForAPlainDirectory(t *testing.T) {
+	// A directory that is not a repository has no git to ask, so reporting a git
+	// stage would name a step that never happens.
+	service, _ := newTestService(t)
+
+	var stages []ReadStage
+	service.SetStageEmitter(func(_ string, data any) {
+		stage, ok := data.(ReadStage)
+		if !ok {
+			return
+		}
+		stages = append(stages, stage)
+	})
+
+	if _, err := service.OpenRoot(context.Background(), scriptTree(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range stages {
+		if stage.Stage == StageGit {
+			t.Errorf("a plain directory reported %q", StageGit)
+		}
+	}
+}
+
+func TestOpenRootWithNoEmitterDoesNotPanic(t *testing.T) {
+	// A Service is built before the window exists, and tests use it without one.
+	// Reporting progress must be optional, the way run events are.
+	service, _ := newTestService(t)
+	if _, err := service.OpenRoot(context.Background(), scriptTree(t)); err != nil {
+		t.Fatal(err)
+	}
 }

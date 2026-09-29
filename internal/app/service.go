@@ -12,6 +12,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -94,6 +95,12 @@ type Service struct {
 	// published and a published view is not written to.
 	startup   []string
 	startupMu sync.Mutex
+
+	// stageEmit sends read-progress events to the window. It is installed once at
+	// startup, after the Service is built, so it is read under stageMu at emit
+	// time rather than captured by whatever wires it up.
+	stageEmit func(name string, data any)
+	stageMu   sync.Mutex
 }
 
 // New returns a Service that keeps its state under configDir.
@@ -108,7 +115,7 @@ func New(configDir string) *Service {
 	})
 	cache := params.NewCache(filepath.Join(configDir, "params-cache.json"))
 	reader.Cache = cache
-	return &Service{
+	service := &Service{
 		configDir: configDir,
 		store:     workspace.NewStore(configDir),
 		cache:     cache,
@@ -117,6 +124,39 @@ func New(configDir string) *Service {
 		roots:     map[string]*RootView{},
 		runner:    NewRunner(),
 	}
+	// The reader's progress hook is bound to the Service rather than to an
+	// emitter, because the emitter is installed later and a hook that captured
+	// it at construction time would always see the nil one. emitStage reads the
+	// current emitter when it is called.
+	reader.OnGroup = func(ctx context.Context, progress params.GroupProgress) {
+		service.emitStage(ReadStage{
+			Root:     readRoot(ctx),
+			Stage:    StageHarvest,
+			Language: string(progress.Language),
+			Done:     progress.Done,
+			Total:    progress.Total,
+			Scripts:  progress.Scripts,
+		})
+	}
+	return service
+}
+
+// readRootKey carries the root a read is for through the read itself, so that a
+// progress event raised deep in the parameter reader can name the root without
+// the reader knowing anything about roots. It is a context value rather than a
+// field on the Service because two reads of different roots can overlap, and a
+// shared field would let one read's progress be labeled with the other's root.
+type readRootKey struct{}
+
+// withReadRoot returns a context that names the root being read.
+func withReadRoot(ctx context.Context, root string) context.Context {
+	return context.WithValue(ctx, readRootKey{}, root)
+}
+
+// readRoot returns the root a read is for, or "" outside a read.
+func readRoot(ctx context.Context) string {
+	root, _ := ctx.Value(readRootKey{}).(string)
+	return root
 }
 
 // Start loads the persisted state.

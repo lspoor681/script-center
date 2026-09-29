@@ -38,6 +38,9 @@ func (a *App) startup(ctx context.Context) {
 	a.service.SetRunEmitter(func(name string, data any) {
 		runtime.EventsEmit(a.ctxOrBackground(), name, data)
 	})
+	a.service.SetStageEmitter(func(name string, data any) {
+		runtime.EventsEmit(a.ctxOrBackground(), name, data)
+	})
 	_ = a.service.Start()
 }
 

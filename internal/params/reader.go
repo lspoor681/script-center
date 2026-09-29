@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lspoor/script-center/internal/detect"
@@ -191,6 +192,11 @@ type Options struct {
 type Reader struct {
 	// Options configures the toolchain invocations.
 	Options Options
+	// mu guards interpreters. A Reader is shared by every read the application
+	// makes, and Go treats a concurrent map read and write as a fatal runtime
+	// error rather than a race the caller can recover from, so two reads
+	// overlapping have to be serialized here rather than left to the caller.
+	mu sync.Mutex
 	// interpreters caches the toolchain lookup, because a scan of a hundred
 	// scripts should not search the filesystem a hundred times.
 	interpreters map[detect.Language]string
@@ -201,6 +207,33 @@ type Reader struct {
 	// toolchain at all. It is optional so that a caller with nowhere to persist
 	// results can simply leave it nil.
 	Cache *Cache
+	// OnGroup, when set, is called once per language group just before that
+	// group is harvested. The harvest is the slow part of reading a directory
+	// and it is one toolchain invocation per group, so a caller that shows
+	// progress needs to know which group it is waiting on. Scripts answered
+	// from the cache never enter a group, so they are not reported.
+	//
+	// The context is passed through so a caller can attribute the report to the
+	// request that caused it; the reader itself has no idea which root it is
+	// reading, only the paths it was handed.
+	//
+	// It is a plain callback rather than an event name so that this package
+	// stays independent of any window: the caller decides what to do with it.
+	OnGroup func(ctx context.Context, progress GroupProgress)
+}
+
+// GroupProgress describes one language group of a read, reported through
+// Reader.OnGroup just before the group is harvested.
+type GroupProgress struct {
+	// Language is the language about to be harvested.
+	Language detect.Language
+	// Scripts is how many scripts in this group are being read. Scripts served
+	// from the cache are not in any group and are not counted.
+	Scripts int
+	// Done and Total count groups, not scripts: Done groups have been
+	// harvested, of Total in this read.
+	Done  int
+	Total int
 }
 
 // NewReader returns a Reader with the given options.
@@ -248,11 +281,23 @@ func (r *Reader) Read(ctx context.Context, scripts []Script) ([]Report, error) {
 		return r.ordered(scripts, byPath), nil
 	}
 
-	for _, language := range order {
+	for i, language := range order {
 		group := grouped[language]
 		paths := make([]string, 0, len(group))
 		for _, script := range group {
 			paths = append(paths, script.Path)
+		}
+
+		// Reported before the group is harvested, not after, because the harvest
+		// is the part the caller is waiting on and can be the slowest thing a
+		// read does when a toolchain has to start.
+		if r.OnGroup != nil {
+			r.OnGroup(ctx, GroupProgress{
+				Language: language,
+				Scripts:  len(group),
+				Done:     i,
+				Total:    len(order),
+			})
 		}
 
 		reports, err := r.readGroup(ctx, language, paths)
@@ -333,7 +378,15 @@ func (r *Reader) readGroup(ctx context.Context, language detect.Language, paths 
 // extractorFor returns the extractor for a language, locating the toolchain once
 // and remembering it. A scan of a hundred scripts should not search the
 // filesystem a hundred times.
+//
+// The memo is held under the lock across the lookup, which looks like more
+// contention than it is: the lookup runs at most once per language per process
+// and every read after it is served from the map. Serializing those is cheaper
+// than a double-checked read, and it cannot deadlock because nothing reached
+// under this lock takes another lock.
 func (r *Reader) extractorFor(language detect.Language) (Extractor, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.interpreters == nil {
 		r.interpreters = map[detect.Language]string{}
 	}

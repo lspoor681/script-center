@@ -472,3 +472,26 @@ func (s *Service) SetRunEmitter(emit func(name string, data any)) {
 	}
 	s.runner.SetEmitter(emit)
 }
+
+// SetStageEmitter installs the window's event emitter for read progress. It
+// exists for the same reason as SetRunEmitter: a test can construct a Service
+// without a webview and still collect the events a read produces.
+func (s *Service) SetStageEmitter(emit func(name string, data any)) {
+	s.stageMu.Lock()
+	defer s.stageMu.Unlock()
+	s.stageEmit = emit
+}
+
+// emitStage reports one step of a read to the window.
+//
+// A nil emitter drops the event, which keeps a Service usable before startup
+// and in a test that wants no events, the same way Runner.emitEvent does for
+// runs.
+func (s *Service) emitStage(stage ReadStage) {
+	s.stageMu.Lock()
+	emit := s.stageEmit
+	s.stageMu.Unlock()
+	if emit != nil {
+		emit("read:stage", stage)
+	}
+}

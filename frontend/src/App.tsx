@@ -46,6 +46,13 @@ function App() {
     const [tools, setTools] = useState<types.Toolchain[]>([]);
     const [status, setStatus] = useState<types.Status | null>(null);
     const [busy, setBusy] = useState<string>('');
+    // The stage of the directory read in flight, and the root that read belongs
+    // to. A read is asynchronous, so a stage can arrive after the user has moved
+    // to another root; the root is what tells the two apart. It is a ref rather
+    // than state because it is read inside an event handler that must not be
+    // re-subscribed every time a read starts.
+    const [readStage, setReadStage] = useState<types.ReadStage | null>(null);
+    const readingRoot = useRef<string>('');
     const [error, setError] = useState<string>('');
     // The document being read, and which of the script's documents is chosen.
     // A readme is not fetched with the script because it can be far larger
@@ -115,8 +122,15 @@ function App() {
     // Opening the selected root is where the metadata arrives. It is a named
     // callback rather than inline in the effect so the git strip's refresh
     // button can re-read the same root.
+    //
+    // The label is left to the backend's read:stage events rather than set here,
+    // because "Reading…" says nothing about which of the three slow steps the
+    // read is actually on. Roots are stored already normalized, and OpenRoot
+    // normalizes with the same call, so the root on a stage event is the same
+    // string that was sent.
     const loadRoot = useCallback(async (path: string) => {
-        setBusy(`Reading ${path}…`);
+        readingRoot.current = path;
+        setReadStage(null);
         try {
             const next = await api.openRoot(path);
             setView(next);
@@ -124,6 +138,12 @@ function App() {
         } catch (err) {
             fail('reading the root', err);
         } finally {
+            // The ref is cleared as well as the state. A stage that is still in
+            // flight when the read ends would otherwise have nothing to match
+            // against, leave the label showing a step that has finished, and
+            // never be replaced.
+            readingRoot.current = '';
+            setReadStage(null);
             setBusy('');
             void refreshStatus();
         }
@@ -273,17 +293,29 @@ function App() {
             : current));
     }, []);
 
+    // A stage is only shown when it belongs to the read the user is waiting on.
+    // The read root is a ref, so this callback is stable and the subscription is
+    // attached once, the same as the run listeners.
+    const handleReadStage = useCallback((stage: types.ReadStage) => {
+        if (!stage || stage.root !== readingRoot.current) {
+            return;
+        }
+        setReadStage(stage);
+    }, []);
+
     // The listeners are attached once. The callbacks read the active id through
     // a ref, so they are stable and do not need re-subscribing as the run
     // changes.
     useEffect(() => {
         const offOutput = EventsOn('run:output', (...args: unknown[]) => handleRunOutput(args[0]));
         const offExit = EventsOn('run:exit', (...args: unknown[]) => handleRunExit(args[0]));
+        const offStage = EventsOn('read:stage', (...args: unknown[]) => handleReadStage(args[0] as types.ReadStage));
         return () => {
             offOutput();
             offExit();
+            offStage();
         };
-    }, [handleRunOutput, handleRunExit]);
+    }, [handleRunOutput, handleRunExit, handleReadStage]);
 
     const startRun = useCallback(async (script: types.ScriptView, extra: string, raised: boolean) => {
         setRun({
@@ -539,7 +571,8 @@ function App() {
             </aside>
 
             <main className="list">
-                {busy && <p className="busy">{busy}</p>}
+                {readStage && <p className="busy">{describeStage(readStage)}</p>}
+                {!readStage && busy && <p className="busy">{busy}</p>}
                 {error && <p className="error">{error}</p>}
 
                 {view?.warnings?.map((warning) => (
@@ -990,6 +1023,29 @@ function matches(script: types.ScriptView, query: string): boolean {
         ...(script.metadata?.params?.map((p) => p.name) ?? []),
     ];
     return hay.some((text) => text.toLowerCase().includes(q));
+}
+
+// describeStage turns a read stage into the one line shown while a directory is
+// being read.
+//
+// The stage that announces the harvest carries no language, and the events that
+// follow it carry one and the counts, because the harvest is where the time
+// actually goes: one toolchain invocation per language, each of which can be
+// slow the first time it starts. Naming the language is what turns "this is
+// slow" into "this is what is slow".
+function describeStage(stage: types.ReadStage): string {
+    if (stage.language) {
+        const scripts = stage.scripts ?? 0;
+        const of = stage.total > 0 ? ` (${stage.done + 1} of ${stage.total})` : '';
+        return `Harvesting ${stage.language} — ${scripts} ${scripts === 1 ? 'script' : 'scripts'}${of}…`;
+    }
+    if (stage.stage === types.READ_STAGES.scan) {
+        return 'Reading directory…';
+    }
+    if (stage.stage === types.READ_STAGES.git) {
+        return 'Querying git…';
+    }
+    return 'Reading…';
 }
 
 // highlight wraps the first case-insensitive query match in the text with a

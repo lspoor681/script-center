@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -404,4 +405,138 @@ func TestEveryExtractorImplementsTheInterface(t *testing.T) {
 		}
 		extractor.Readability()
 	}
+}
+
+func TestReaderReportsEachLanguageGroupBeforeHarvestingIt(t *testing.T) {
+	// The harvest is the slow part of a read and it is one toolchain invocation
+	// per language, so a caller showing progress needs each group as it starts.
+	// Bash is used for the groups because it is read in process, which makes the
+	// test independent of what happens to be installed.
+	dir := t.TempDir()
+	scripts := []Script{
+		{Path: filepath.Join(dir, "a.sh"), Language: detect.Bash},
+		{Path: filepath.Join(dir, "b.sh"), Language: detect.Bash},
+		{Path: filepath.Join(dir, "c.sh"), Language: detect.Bash},
+		{Path: filepath.Join(dir, "d.py"), Language: detect.Python},
+	}
+
+	reader := NewReader(Options{})
+	// Python has no toolchain on every machine, so the lookup fails rather than
+	// depending on the host. A failing group is still reported, because the
+	// user waits for it either way.
+	reader.lookup = func(language detect.Language) (string, error) {
+		if language == detect.Python {
+			return "", errors.New("no python here")
+		}
+		return "/bin/bash", nil
+	}
+
+	var seen []GroupProgress
+	reader.OnGroup = func(_ context.Context, progress GroupProgress) {
+		seen = append(seen, progress)
+	}
+
+	if _, err := reader.Read(context.Background(), scripts); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(seen) != 2 {
+		t.Fatalf("got %d groups, want 2: %+v", len(seen), seen)
+	}
+	// The order is the order the languages first appear, and the counts count
+	// groups, so the user can see how far through the read they are.
+	if seen[0].Language != detect.Bash || seen[0].Scripts != 3 || seen[0].Done != 0 || seen[0].Total != 2 {
+		t.Errorf("first group = %+v, want bash/3/0/2", seen[0])
+	}
+	if seen[1].Language != detect.Python || seen[1].Scripts != 1 || seen[1].Done != 1 || seen[1].Total != 2 {
+		t.Errorf("second group = %+v, want python/1/1/2", seen[1])
+	}
+}
+
+func TestReaderDoesNotReportCachedScriptsAsAGroup(t *testing.T) {
+	// A script answered from the cache never enters a group, so reporting one
+	// would tell the user the reader is about to harvest something it is not.
+	cache := NewCache("")
+	cached := Script{
+		Path: filepath.Join(t.TempDir(), "a.sh"), Language: detect.Bash,
+		Size: 1, ModTime: time.Unix(1, 0),
+	}
+	cache.Store(cached.Path, cached.Size, cached.ModTime, string(cached.Language), sampleReport(cached.Path, "Force"))
+	fresh := Script{Path: filepath.Join(t.TempDir(), "b.sh"), Language: detect.Bash, Size: 1, ModTime: time.Unix(1, 0)}
+
+	reader := NewReader(Options{})
+	reader.Cache = cache
+	reader.lookup = func(detect.Language) (string, error) { return "/bin/bash", nil }
+
+	var seen []GroupProgress
+	reader.OnGroup = func(_ context.Context, progress GroupProgress) {
+		seen = append(seen, progress)
+	}
+
+	if _, err := reader.Read(context.Background(), []Script{cached, fresh}); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("got %d groups, want 1: %+v", len(seen), seen)
+	}
+	if seen[0].Scripts != 1 {
+		t.Errorf("Scripts = %d, want 1: only the uncached script is harvested", seen[0].Scripts)
+	}
+}
+
+func TestReaderWithEveryScriptCachedReportsNoGroup(t *testing.T) {
+	// There is nothing to wait for, so there is nothing to report. A group here
+	// would be a wait that never happens.
+	cache := NewCache("")
+	script := Script{
+		Path: filepath.Join(t.TempDir(), "a.sh"), Language: detect.Bash,
+		Size: 1, ModTime: time.Unix(1, 0),
+	}
+	cache.Store(script.Path, script.Size, script.ModTime, string(script.Language), sampleReport(script.Path, "Force"))
+
+	reader := NewReader(Options{})
+	reader.Cache = cache
+	reader.lookup = func(detect.Language) (string, error) {
+		return "", errors.New("nothing should be looked up")
+	}
+	reported := 0
+	reader.OnGroup = func(context.Context, GroupProgress) { reported++ }
+
+	if _, err := reader.Read(context.Background(), []Script{script}); err != nil {
+		t.Fatal(err)
+	}
+	if reported != 0 {
+		t.Errorf("OnGroup was called %d times, want 0", reported)
+	}
+}
+
+func TestConcurrentReadsDoNotRace(t *testing.T) {
+	// A Reader is shared by every read the application makes, and two reads can
+	// overlap: the window's re-read and its background refresh are independent
+	// requests. The toolchain memo is a map, and Go treats a concurrent read and
+	// write of one as a fatal error rather than a race the caller can recover
+	// from, so this has to be safe without the caller serializing anything.
+	reader := NewReader(Options{})
+	reader.lookup = func(detect.Language) (string, error) { return "/bin/bash", nil }
+
+	scripts := []Script{
+		{Path: filepath.Join(t.TempDir(), "a.sh"), Language: detect.Bash},
+		{Path: filepath.Join(t.TempDir(), "b.py"), Language: detect.Python},
+		{Path: filepath.Join(t.TempDir(), "c.sh"), Language: detect.Bash},
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				if _, err := reader.Read(context.Background(), scripts); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }

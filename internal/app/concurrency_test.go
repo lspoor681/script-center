@@ -246,3 +246,78 @@ func contains(list []string, value string) bool {
 	}
 	return false
 }
+
+func TestConcurrentOpenRootDoesNotRace(t *testing.T) {
+	// A re-read and a background refresh are independent requests that can
+	// overlap, and both end up in the parameter reader, whose toolchain memo is a
+	// shared map. Nothing in OpenRoot serializes them, and Go treats a concurrent
+	// map read and write as a fatal runtime error rather than a recoverable
+	// race, so a double-click on the refresh button could once take the window
+	// down. The reader holds the memo under a lock; this proves it stays that way.
+	service, _ := newTestService(t)
+	root := scriptTree(t)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 6; j++ {
+				if _, err := service.OpenRoot(context.Background(), root); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestConcurrentOpenRootAttributesStagesToTheirOwnRoot(t *testing.T) {
+	// Two reads of different roots overlap when the user switches folders
+	// quickly. The root travels in the context rather than on the Service, so
+	// one read's progress is never labeled with the other read's root.
+	service, _ := newTestService(t)
+	first, second := scriptTree(t), dotSourceTree(t)
+
+	var mu sync.Mutex
+	byRoot := map[string][]ReadStage{}
+	service.SetStageEmitter(func(_ string, data any) {
+		stage, ok := data.(ReadStage)
+		if !ok {
+			t.Errorf("unhandled event type %T", data)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		byRoot[stage.Root] = append(byRoot[stage.Root], stage)
+	})
+
+	var wg sync.WaitGroup
+	for _, root := range []string{first, second, first, second} {
+		wg.Add(1)
+		go func(root string) {
+			defer wg.Done()
+			if _, err := service.OpenRoot(context.Background(), root); err != nil {
+				t.Error(err)
+			}
+		}(root)
+	}
+	wg.Wait()
+
+	for root, stages := range byRoot {
+		// Every event about a read has to name that read's root, or the window
+		// cannot tell which read a late event belongs to.
+		if root != first && root != second {
+			t.Errorf("stage reported for an unknown root %q", root)
+		}
+		for _, stage := range stages {
+			if stage.Root != root {
+				t.Errorf("event filed under %q carries root %q", root, stage.Root)
+			}
+			if stage.Stage == "" {
+				t.Error("a stage arrived with no name")
+			}
+		}
+	}
+}

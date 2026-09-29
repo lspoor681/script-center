@@ -117,6 +117,44 @@ func (v ScriptView) detectedLanguage() detect.Language {
 	return detect.Language(v.Language)
 }
 
+// The stages a directory read reports as it goes. They are sent to the window
+// as events so a slow open says what it is waiting on instead of showing one
+// opaque label, and they are named here so the frontend matches on constants
+// rather than on prose.
+const (
+	// StageScan is enumerating the directory: git ls-files in a repository, a
+	// recursive walk otherwise.
+	StageScan = "reading directory"
+	// StageHarvest is starting one toolchain per language to read parameters.
+	// It is reported once to announce the stage, then again per language.
+	StageHarvest = "harvesting parameters"
+	// StageGit is asking git for the root's branch, sync state and changes.
+	StageGit = "querying git"
+)
+
+// ReadStage is one step of a directory read, delivered as a read:stage event.
+//
+// The read is asynchronous and the user can move on while it runs, so Root is
+// carried on every event: a stage that arrives for a root no longer on screen
+// is dropped rather than shown against the wrong folder.
+type ReadStage struct {
+	// Root is the absolute path of the directory being read.
+	Root string `json:"root"`
+	// Stage is one of the Stage constants.
+	Stage string `json:"stage"`
+	// Language names the language being harvested. It is set only on the
+	// per-language events inside StageHarvest.
+	Language string `json:"language,omitempty"`
+	// Scripts is how many scripts the harvest is about to read. It is only set on
+	// the per-language events, where it describes the language.
+	Scripts int `json:"scripts,omitempty"`
+	// Done and Total count language groups within the harvest, not scripts: Done
+	// groups have been read, of Total in this read. Both are zero on the events
+	// that announce a stage rather than report progress within it.
+	Done  int `json:"done"`
+	Total int `json:"total"`
+}
+
 // RootView is one scanned root with metadata for every script in it.
 type RootView struct {
 	Root    string       `json:"root"`

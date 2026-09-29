@@ -10,6 +10,14 @@ checked off or retired in the TODO at the end of each session.
 
 ### Added
 
+- **Reads say what they are waiting on.** Opening a folder reports each of its
+  three slow steps as it happens instead of showing one "Reading…" label:
+  reading the directory, harvesting parameters, and querying git. The harvest
+  names the language it is about to read and how many scripts that is, with its
+  position in the read, because the harvest is one toolchain invocation per
+  language and is where the time goes. Every event carries the root it belongs
+  to, so a stage arriving for a folder you have already left is dropped instead
+  of being shown against the wrong one.
 - **ReadMe relabel and document tabs.** The script view's documentation section
   is retitled "ReadMe" — not every script has a dedicated readme, so the tab
   now names what it is.
@@ -58,6 +66,13 @@ checked off or retired in the TODO at the end of each session.
 
 ### Fixed
 
+- **Two overlapping directory reads could take the window down.** The parameter
+  reader memoises the toolchain it finds for each language, and that memo is a
+  map. A read re-run by the window and one started by its background refresh are
+  independent requests that can overlap, and Go treats a concurrent map read and
+  write as a fatal runtime error rather than a recoverable race, so a double
+  click on ↻ could kill the application mid-read. The memo is now held under a
+  lock; a test drives concurrent reads and fails without it.
 - **Clean-checkout CI failed before tests ran.** The Go embed target had no
   tracked frontend files because the generated `frontend/dist` output is
   ignored. A retained placeholder now lets vet, tests, and lint compile from a

@@ -26,7 +26,13 @@ func (s *Service) OpenRoot(ctx context.Context, root string) (*RootView, error) 
 		return nil, err
 	}
 
+	// The root travels in the context so the parameter reader's progress hook,
+	// which is called from inside the read, can name the root it is reporting
+	// on. Two reads can overlap, so this cannot live on the Service.
+	ctx = withReadRoot(ctx, absolute)
+
 	started := time.Now()
+	s.emitStage(ReadStage{Root: absolute, Stage: StageScan})
 	result, err := scan.Scan(ctx, absolute)
 	if err != nil {
 		return nil, err
@@ -51,6 +57,7 @@ func (s *Service) OpenRoot(ctx context.Context, root string) (*RootView, error) 
 		}
 	}
 
+	s.emitStage(ReadStage{Root: absolute, Stage: StageHarvest})
 	reports, err := s.reader.Read(ctx, scriptsOf(readable))
 	if err != nil {
 		// A read failure is reported on the root rather than replacing the whole
@@ -80,6 +87,7 @@ func (s *Service) OpenRoot(ctx context.Context, root string) (*RootView, error) 
 	// repository with scripts in it, and a root that is not one simply has no
 	// git at all.
 	if result.IsRepo {
+		s.emitStage(ReadStage{Root: absolute, Stage: StageGit})
 		view.Git = s.gitFor(ctx, absolute)
 		markModified(view.Scripts, gitModified(ctx, absolute))
 	}

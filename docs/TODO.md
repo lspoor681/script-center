@@ -123,9 +123,12 @@ current plan of record.
       in `internal/params` plus a fill-in form in the run panel. Once it ships,
       the free-text argument box and the run input box are retired in its favour.
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
-- [ ] **Reading stage events.** Replace the single "busy" string with emitted
-      stage events ("reading directory", "querying git", "harvesting parameters")
-      so a slow open shows what is happening instead of one opaque label.
+- [x] **Reading stage events.** A read reports each of its three slow steps to
+      the window as it happens: reading the directory, harvesting parameters, and
+      querying git. The harvest names the language it is about to read and how
+      many scripts that is, which is where the time actually goes, and each event
+      carries the root it belongs to so a stage for a folder you have left is
+      dropped rather than shown against the wrong one.
 - [ ] **Git status refresh on window focus.** The strip already has a manual ↻
       button, which shipped. What is left is a trigger, so the summary is
       current when you come back to the window after committing outside the app.
