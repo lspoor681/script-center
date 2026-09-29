@@ -23,26 +23,38 @@ current plan of record.
       the window instead of hiding scripts.
 - [x] **Windows hardening.** Interactive `powershell.exe -NoLogo -NoProfile`
       argv, a Windows rename retry, portable tests, and a `wails build` verified
-      locally on Windows. The race detector runs on Windows too, via a MinGW
-      toolchain (`CGO_ENABLED=1`).
+      locally on Windows. The race detector runs on Windows too, via a WinLibs
+      POSIX/UCRT MinGW toolchain (`CGO_ENABLED=1`), installed on the CI test
+      *and* build jobs.
 - [x] **CI checks configured.** Lint, test (ubuntu + windows, `-race`) and
-      build jobs are configured; `.gitattributes` pins checkouts to LF.
+      build jobs are configured; `.gitattributes` pins checkouts to LF. The
+      build job deliberately does not set `NODE_ENV=production`, because wails
+      runs `npm install` and npm would then omit devDependencies, leaving `tsc`
+      and `vite` missing.
 
-## In progress
+## Shipped
 
 - [x] **TODO tracker.** This file, linked from the README.
 - [x] **ReadMe relabel.** Retitle the script view's "Documentation" section to
       "ReadMe" — not every script has a dedicated readme.
-- [x] **Search.** Filter the currently selected root's scripts as you type
-      (name, path, directory, language, synopsis, parameter names).
-- [x] **Git / GitHub status.** A per-root summary strip (branch, ahead/behind,
-      staged/unstaged/untracked counts, last commit, open-on-GitHub) plus a
-      per-script modified badge, from `internal/git`'s already-tested plumbing.
-- [x] **Run locally.** A live streaming run panel in the detail pane header:
-      plain run with optional extra arguments, Stop button, output via Wails
-      events, process working directory = the script's directory so relative
-      paths and dot-sourced files resolve. Uses the existing `internal/pty`
-      package.
+- [x] **Search.** A box above the list filters the currently selected root's
+      already-loaded scripts as you type. Case-insensitive substring match over
+      the fields the list shows (name, path relative to the root, directory,
+      language) plus the synopsis and the parameter names, so a script matches
+      on a word you remember even if you forgot its name. The first hit in each
+      row is wrapped in a `<mark>`, the count is shown, and a cleared query
+      restores the full list. The query persists while you switch roots.
+- [x] **Git / GitHub status.** A per-root summary strip (branch or detached
+      HEAD, ahead/behind the upstream, staged/unstaged/untracked/conflicted
+      counts, the last commit, open-on-GitHub) plus a per-script modified badge,
+      from `internal/git`'s already-tested plumbing. Helpers that would
+      otherwise flash a console window on Windows go through `proc.NoWindow`.
+- [x] **Run locally.** A run bar in the script view's header (plain run with
+      optional extra arguments, an Admin checkbox, Stop) and a terminal pane
+      pinned below the form while a run is open. Output arrives as Wails events,
+      the panel shows the exact argv, and the process working directory is the
+      script's own directory so relative paths and dot-sourced files resolve.
+      Built on the existing `internal/pty` package. One run at a time.
 - [x] **Right-click context menu.** Run, Run (Administrator), Star, Copy path
       and Open file location from a menu on a script row.
 - [x] **Run as administrator.** Elevation wherever it can stay in the app, then
@@ -51,15 +63,18 @@ current plan of record.
       window under a UAC prompt, which the panel reports via `RunView.Blind`
       (no streaming, no stop, exit code still arrives). The run bar's Admin
       checkbox is auto-checked and locked for `#Requires -RunAsAdministrator`,
-      and the context menu offers a one-click elevated run.
+      and the context menu offers a one-click elevated run. Unix has only
+      `sudo` and no detached fallback, so a missing `sudo` refuses the run.
+      Decisions live in `internal/elevate`, one file per platform.
 - [x] **Input to a running script.** The run panel's input box sends one line to
       the child (`pty.LineEnding()`), answering prompts like a sudo password.
       It is kept alongside free-text arguments until the parameter form exists.
 - [x] **Run panel terminal pane.** The right pane splits horizontally while a
-      run is open: the script form above, the terminal below. The terminal
-      stays until its close button (which stops an unfinished run first), keeps
-      streaming output scrolled to the bottom, and offers Stop / Rerun / Copy
-      command.
+      run is open: the script form above, the terminal below. The terminal is
+      committed to a third of the pane's height rather than collapsing to its
+      content, stays until its close button (which stops an unfinished run
+      first), keeps streaming output scrolled to the bottom, and offers
+      Stop / Rerun / Copy command.
 - [x] **Open file location.** `internal/proc.Reveal` opens a script's folder in
       the platform's file manager with the file selected (`explorer /select`,
       `open -R`, `xdg-open`), threaded through `Service.RevealFile`.
@@ -77,7 +92,29 @@ current plan of record.
       "The Directory name is invalid".
 - [x] **Clean-checkout embed target.** A retained placeholder under
       `frontend/dist` lets Go vet, tests, and lint compile before the frontend
-      build populates the directory.
+      build populates the directory. It must survive being deleted: the params
+      work that introduced the placeholder removed it again, which is why CI
+      broke a second time, and `make clean` wipes the whole directory.
+- [x] **Parameter harvest encoding fix.** A character the console codepage
+      cannot represent arrives as a raw byte rather than JSON text — U+2192 (the
+      arrow in "A1B2C3 → C3B2A1") became 0x1A on some PowerShell builds, and
+      that one control byte failed the entire batch of scripts. `harvest.ps1`
+      now pins both console streams to UTF-8 without a BOM, and the decoder
+      strips control bytes that valid JSON never contains.
+- [x] **Console-window flicker fix.** Wails builds a GUI-subsystem binary, so on
+      Windows a helper that is a console-subsystem child (git, `pwsh`) and is
+      started without `CREATE_NO_WINDOW` is given a brand-new console mapped to
+      the desktop — a terminal window flashing once per helper while a directory
+      is read. `proc.NoWindow` sets the flag and is a no-op elsewhere.
+- [x] **Windows backend portability.** Five distinct root causes behind a
+      failing Windows test run: `docs.Discover` checked every README spelling
+      separately, so a case-insensitive filesystem reported one file under three
+      paths; `pty.Shell` built `powershell.exe -Command -`, which Windows
+      PowerShell ignores under a pty and then exits; `workspace.Store.Save`
+      renamed over a destination another handle had open; a test stamped
+      `XDG_CONFIG_HOME`, which Windows ignores for `%AppData%`; and a test
+      assumed mode 000 means unreadable, which holds only where access is
+      enforced by mode rather than by ACL.
 
 ## Backlog
 
@@ -89,8 +126,9 @@ current plan of record.
 - [ ] **Reading stage events.** Replace the single "busy" string with emitted
       stage events ("reading directory", "querying git", "harvesting parameters")
       so a slow open shows what is happening instead of one opaque label.
-- [ ] **Git status refresh.** A trigger (window focus or a manual refresh) so the
-      strip stays current after edits.
+- [ ] **Git status refresh on window focus.** The strip already has a manual ↻
+      button, which shipped. What is left is a trigger, so the summary is
+      current when you come back to the window after committing outside the app.
 - [ ] **Remote execution.** See the design sketch below.
 
 ## Remote execution design (not built)
