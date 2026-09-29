@@ -7,6 +7,7 @@ import (
 
 	"github.com/lspoor/script-center/internal/detect"
 	"github.com/lspoor/script-center/internal/docs"
+	"github.com/lspoor/script-center/internal/editor"
 	"github.com/lspoor/script-center/internal/params"
 	"github.com/lspoor/script-center/internal/scan"
 )
@@ -376,4 +377,43 @@ func formatTime(value time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339)
+}
+
+// Editor describes a text/code editor available on the system.
+type Editor struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Executable  string     `json:"executable"`
+	Args        []string   `json:"args,omitempty"`
+	Terminal    bool       `json:"terminal"`
+	TerminalCmd [][]string `json:"terminalCmd,omitempty"`
+	Extensions  []string   `json:"extensions,omitempty"`
+	Source      string     `json:"source"`
+}
+
+// EditorConfig represents the global editor configuration for the settings UI.
+type EditorConfig struct {
+	Preferences  map[string]string `json:"preferences"`
+	KnownEditors map[string]Editor `json:"knownEditors"`
+}
+
+// PreferredEditorResult represents the result of getting a preferred editor.
+type PreferredEditorResult struct {
+	EditorID string `json:"editorId"`
+	Source   string `json:"source"`
+	Found    bool   `json:"found"`
+}
+
+// EditorFromInternal converts an internal/editor.Editor to the view type.
+func EditorFromInternal(e editor.Editor) Editor {
+	return Editor{
+		ID:          e.ID,
+		Name:        e.Name,
+		Executable:  e.Executable,
+		Args:        e.Args,
+		Terminal:    e.Terminal,
+		TerminalCmd: e.TerminalCmd,
+		Extensions:  e.Extensions,
+		Source:      e.Source,
+	}
 }

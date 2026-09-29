@@ -265,3 +265,25 @@ export type DocumentView = {
     html: string;
     error?: string;
 };
+
+export type Editor = {
+    id: string;
+    name: string;
+    executable: string;
+    args?: string[];
+    terminal: boolean;
+    terminalCmd?: string[][];
+    extensions?: string[];
+    source: 'detected' | 'configured' | 'custom';
+};
+
+export type EditorConfig = {
+    preferences: Record<string, string>;
+    knownEditors: Record<string, Editor>;
+};
+
+export type PreferredEditorResult = {
+    editorId: string;
+    source: 'workspace' | 'global' | 'default';
+    found: boolean;
+};

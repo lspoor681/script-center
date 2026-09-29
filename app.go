@@ -140,6 +140,40 @@ func (a *App) ToggleFavorite(root, rel string) (any, error) {
 	return a.service.ToggleFavorite(root, rel)
 }
 
+// OpenFile opens a file with the specified editor.
+// editorID "system" means use OS default.
+func (a *App) OpenFile(path, editorID string) error {
+	return a.service.OpenFile(path, editorID)
+}
+
+// DetectEditors returns the list of available editors on the system.
+func (a *App) DetectEditors() []app.Editor { return a.service.DetectEditors() }
+
+// GetPreferredEditor returns the preferred editor for a file extension.
+func (a *App) GetPreferredEditor(ext string) app.PreferredEditorResult {
+	return a.service.GetPreferredEditor(ext)
+}
+
+// SetWorkspacePreferredEditor sets the workspace-specific preferred editor for an extension.
+func (a *App) SetWorkspacePreferredEditor(ext, editorID string) error {
+	return a.service.SetWorkspacePreferredEditor(ext, editorID)
+}
+
+// SetGlobalPreferredEditor sets the global preferred editor for an extension.
+func (a *App) SetGlobalPreferredEditor(ext, editorID string) error {
+	return a.service.SetGlobalPreferredEditor(ext, editorID)
+}
+
+// GetGlobalEditorConfig returns the full global editor configuration.
+func (a *App) GetGlobalEditorConfig() (app.EditorConfig, error) {
+	return a.service.GetGlobalEditorConfig()
+}
+
+// SaveGlobalEditorConfig saves the full global editor configuration.
+func (a *App) SaveGlobalEditorConfig(cfg app.EditorConfig) error {
+	return a.service.SaveGlobalEditorConfig(cfg)
+}
+
 // Toolchains reports which languages can be read on this machine.
 func (a *App) Toolchains() []app.Toolchain { return a.service.Toolchains() }
 

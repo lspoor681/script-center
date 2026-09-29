@@ -76,6 +76,16 @@ checked off or retired in the TODO at the end of each session.
   context menu dynamically shows "Star" or "Unstar" based on the current state.
   A "★ Favorites" filter button in the search row shows only starred scripts,
   laying groundwork for a future composable filter system.
+- **Open with... / Editor preferences.** Right-click a script → "Open ▸" opens a
+  submenu with "Open (preferred editor)", "Open with..." (lists detected editors:
+  Neovim, Visual Studio Code, Notepad++, PowerShell ISE, system default), and
+  "Set default for .ext" (workspace or global). Neovim launches in a new terminal
+  window (Windows: `wt` → `pwsh` → `powershell` → `cmd`; macOS: Terminal/iTerm;
+  Linux: gnome-terminal/konsole/xterm/alacritty/kitty). Preferences persist per
+  extension: workspace override → global TOML config (`~/.config/script-center/editors.toml`)
+  → Neovim if on PATH → OS default. An "Open" button in the run bar opens with
+  the preferred editor in one click. Context menu submenus support both hover and
+  click. Global config stored as TOML for future GUI settings window.
 
 ### Fixed
 

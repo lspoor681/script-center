@@ -142,6 +142,14 @@ current plan of record.
       in `internal/params` plus a fill-in form in the run panel. Once it ships,
       the free-text argument box and the run input box are retired in its favour.
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
+- [ ] **Open with... / Editor preferences.** Right-click a script → "Open ▸" to
+      open in a preferred editor (Neovim, VS Code, Notepad++, PowerShell ISE,
+      system default). Neovim launches in a new terminal window (Windows Terminal,
+      pwsh, cmd; gnome-terminal, konsole, etc. on Linux; Terminal/iTerm on macOS).
+      Preferences persist per extension: workspace override → global config →
+      Neovim if on PATH → OS default. A button in the run bar opens with the
+      preferred editor in one click. Global config stored as TOML for future GUI
+      settings window. Context menu supports both hover and click for submenus.
 - [ ] **Complex filter system.** A composable filter bar above the script list
       that combines free-text search with facet chips (language, has-params,
       modified, favorited, path prefix). Each facet adds a token; tokens can be

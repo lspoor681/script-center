@@ -10,15 +10,22 @@ import {
     AddRoot as addRootBinding,
     ChooseRoot as chooseRootBinding,
     CopyText as copyTextBinding,
+    DetectEditors as detectEditorsBinding,
     Explain as explainBinding,
+    GetGlobalEditorConfig as getGlobalEditorConfigBinding,
+    GetPreferredEditor as getPreferredEditorBinding,
     Invalidate as invalidateBinding,
+    OpenFile as openFileBinding,
     OpenRoot as openRootBinding,
     RefreshGit as refreshGitBinding,
     RemoveRoot as removeRootBinding,
     RenderDocument as renderDocumentBinding,
     RevealFile as revealFileBinding,
     RunScript as runScriptBinding,
+    SaveGlobalEditorConfig as saveGlobalEditorConfigBinding,
     SendInput as sendInputBinding,
+    SetGlobalPreferredEditor as setGlobalPreferredEditorBinding,
+    SetWorkspacePreferredEditor as setWorkspacePreferredEditorBinding,
     Status as statusBinding,
     StopScript as stopScriptBinding,
     ToggleFavorite as toggleFavoriteBinding,
@@ -27,8 +34,11 @@ import {
 } from '../wailsjs/go/main/App';
 import type {
     DocumentView,
+    Editor,
+    EditorConfig,
     ExplainView,
     GitRefresh,
+    PreferredEditorResult,
     RootView,
     RunView,
     ScriptView,
@@ -114,4 +124,34 @@ export function stopScript(id: string): Promise<void> {
 
 export function toolchains(): Promise<Toolchain[]> {
     return toolchainsBinding() as Promise<Toolchain[]>;
+}
+
+export function openFile(path: string, editorId: string): Promise<void> {
+    return openFileBinding(path, editorId);
+}
+
+export function detectEditors(): Promise<Editor[]> {
+    return detectEditorsBinding() as Promise<Editor[]>;
+}
+
+export function getPreferredEditor(ext: string): Promise<PreferredEditorResult> {
+    return getPreferredEditorBinding(ext) as Promise<PreferredEditorResult>;
+}
+
+export function setWorkspacePreferredEditor(ext: string, editorId: string): Promise<void> {
+    return setWorkspacePreferredEditorBinding(ext, editorId);
+}
+
+export function setGlobalPreferredEditor(ext: string, editorId: string): Promise<void> {
+    return setGlobalPreferredEditorBinding(ext, editorId);
+}
+
+export function getGlobalEditorConfig(): Promise<EditorConfig> {
+    return getGlobalEditorConfigBinding() as Promise<EditorConfig>;
+}
+
+export function saveGlobalEditorConfig(cfg: EditorConfig): Promise<void> {
+    // The Wails binding expects the generated EditorConfig class which has convertValues method.
+    // We pass it as unknown to satisfy TypeScript since our interface is compatible.
+    return saveGlobalEditorConfigBinding(cfg as unknown as Parameters<typeof saveGlobalEditorConfigBinding>[0]);
 }

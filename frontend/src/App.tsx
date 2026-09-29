@@ -37,6 +37,14 @@ type RunState = {
 // The context menu needs where it opened and what it was opened for.
 type MenuState = {x: number; y: number; script: types.ScriptView};
 
+// Context menu item type, supporting submenus.
+type MenuItem = {
+    label: string;
+    run?: () => void;
+    submenu?: MenuItem[];
+    disabled?: boolean;
+};
+
 function App() {
     const [roots, setRoots] = useState<types.Root[]>(NO_ROOTS);
     const [selected, setSelected] = useState<string>('');
@@ -44,6 +52,7 @@ function App() {
     const [picked, setPicked] = useState<types.ScriptView | null>(null);
     const [detail, setDetail] = useState<types.ExplainView | null>(null);
     const [tools, setTools] = useState<types.Toolchain[]>([]);
+    const [editors, setEditors] = useState<types.Editor[]>([]);
     const [status, setStatus] = useState<types.Status | null>(null);
     const [busy, setBusy] = useState<string>('');
     // The stage of the directory read in flight, and the root that read belongs
@@ -67,6 +76,9 @@ function App() {
     const [query, setQuery] = useState('');
     // When true, only favorited scripts are shown in the list.
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+    // Track which submenu is currently hovered (for hover-to-open) or pinned (click-to-toggle)
+    const [hoveredSubmenu, setHoveredSubmenu] = useState<string | null>(null);
+    const [pinnedSubmenu, setPinnedSubmenu] = useState<string | null>(null);
     // The run panel shows the live output of the one active run. It is set here
     // rather than in the detail header because a run can start from a context
     // menu without a script being picked.
@@ -125,6 +137,7 @@ function App() {
         void refreshWorkspace();
         void refreshStatus();
         void api.toolchains().then(setTools).catch(() => undefined);
+        void api.detectEditors().then(setEditors).catch(() => undefined);
     }, [refreshWorkspace, refreshStatus]);
 
     // Opening the selected root is where the metadata arrives. It is a named
@@ -377,6 +390,50 @@ function App() {
         return favorites.some(f => f.root === script.root && f.rel === script.rel);
     }, [favorites]);
 
+    // Get the preferred editor for a script's extension.
+    const getPreferredEditor = useCallback(async (ext: string) => {
+        try {
+            return await api.getPreferredEditor(ext);
+        } catch {
+            return {editorId: 'system', source: 'default' as const, found: false};
+        }
+    }, []);
+
+    // Open a file with the preferred editor for its extension.
+    const openWithPreferred = useCallback(async (script: types.ScriptView) => {
+        const ext = script.path.slice(script.path.lastIndexOf('.'));
+        const result = await getPreferredEditor(ext);
+        try {
+            await api.openFile(script.path, result.editorId);
+        } catch (err) {
+            fail(`opening with ${result.editorId}`, err);
+        }
+    }, [getPreferredEditor, fail]);
+
+    // Open a file with a specific editor.
+    const openWithEditor = useCallback(async (script: types.ScriptView, editorId: string) => {
+        try {
+            await api.openFile(script.path, editorId);
+        } catch (err) {
+            fail(`opening with ${editorId}`, err);
+        }
+    }, [fail]);
+
+    // Set the default editor for an extension (workspace or global).
+    const setDefaultEditor = useCallback(async (ext: string, editorId: string, global: boolean) => {
+        try {
+            if (global) {
+                await api.setGlobalPreferredEditor(ext, editorId);
+            } else {
+                await api.setWorkspacePreferredEditor(ext, editorId);
+            }
+            // Refresh workspace to pick up the new preference
+            void refreshWorkspace();
+        } catch (err) {
+            fail('setting default editor', err);
+        }
+    }, [fail, refreshWorkspace]);
+
     // Output arrives as events from the backend's runner, each tagged with the
     // id of the run it belongs to. A chunk is appended only while it matches
     // the active run, so events that race with the promise resolving cannot
@@ -565,32 +622,87 @@ function App() {
 
     // Build the context menu items for a given script, so the Star label reflects
     // the current favorite state.
-    const buildMenu = useCallback((script: types.ScriptView) => [
-        {
-            label: 'Run',
-            run: () => void startRun(script, '', false),
-        },
-        {
-            label: 'Run (Administrator)',
-            run: () => void startRun(script, '', true),
-        },
-        {
-            label: isFavorite(script) ? 'Unstar' : 'Star',
-            run: () => void star(script),
-        },
-        {
-            label: 'Copy path',
-            run: () => void copyText(script.path, 'path'),
-        },
-        {
-            label: 'Open file location',
-            run: () => {
-                api.revealFile(script.path).catch((err) => {
-                    fail('opening the file location', err);
-                });
+    const buildMenu = useCallback((script: types.ScriptView): MenuItem[] => {
+        const ext = script.path.slice(script.path.lastIndexOf('.')).toLowerCase();
+        const preferredEditor = editors.find(e => e.id === 'neovim')?.name || 'Neovim';
+        
+        // Build the Open With submenu items
+        const openWithItems: MenuItem[] = editors.map(ed => ({
+            label: ed.name + (ed.terminal ? ' (terminal)' : ''),
+            run: () => void openWithEditor(script, ed.id),
+        }));
+        // Add system default at the end
+        openWithItems.push({
+            label: 'System Default',
+            run: () => void openWithEditor(script, 'system'),
+        });
+
+        // Build the Set Default submenu items
+        const setDefaultItems: MenuItem[] = editors.map(ed => ({
+            label: ed.name + (ed.terminal ? ' (terminal)' : ''),
+            run: () => void setDefaultEditor(ext, ed.id, false),
+        }));
+        setDefaultItems.push({
+            label: 'System Default',
+            run: () => void setDefaultEditor(ext, 'system', false),
+        });
+        // Add global options with a separator
+        setDefaultItems.push({label: '──', disabled: true});
+        setDefaultItems.push(...editors.map(ed => ({
+            label: 'Global: ' + ed.name + (ed.terminal ? ' (terminal)' : ''),
+            run: () => void setDefaultEditor(ext, ed.id, true),
+        })));
+        setDefaultItems.push({
+            label: 'Global: System Default',
+            run: () => void setDefaultEditor(ext, 'system', true),
+        });
+
+        return [
+            {
+                label: 'Run',
+                run: () => void startRun(script, '', false),
             },
-        },
-    ], [startRun, star, copyText, fail, isFavorite]);
+            {
+                label: 'Run (Administrator)',
+                run: () => void startRun(script, '', true),
+            },
+            {
+                label: isFavorite(script) ? 'Unstar' : 'Star',
+                run: () => void star(script),
+            },
+            {
+                label: 'Copy path',
+                run: () => void copyText(script.path, 'path'),
+            },
+            {
+                label: 'Open file location',
+                run: () => {
+                    api.revealFile(script.path).catch((err) => {
+                        fail('opening the file location', err);
+                    });
+                },
+            },
+            {
+                label: 'Open',
+                submenu: [
+                    {
+                        label: `Open (${preferredEditor})`,
+                        run: () => void openWithPreferred(script),
+                    },
+                    {label: '──', disabled: true},
+                    {
+                        label: 'Open with...',
+                        submenu: openWithItems,
+                    },
+                    {label: '──', disabled: true},
+                    {
+                        label: 'Set default for ' + ext,
+                        submenu: setDefaultItems,
+                    },
+                ],
+            },
+        ];
+    }, [startRun, star, copyText, fail, isFavorite, editors, openWithPreferred, openWithEditor, setDefaultEditor]);
 
     const missing = useMemo(
         () => tools.filter((tool) => !tool.available),
@@ -868,6 +980,13 @@ function App() {
                                 >
                                     ▶ Run
                                 </button>
+                                <button
+                                    className="ghost"
+                                    onClick={() => void openWithPreferred(picked)}
+                                    title="Open in preferred editor"
+                                >
+                                    Open
+                                </button>
                                 <button className="ghost" onClick={() => void star(picked)}>
                                     {isFavorite(picked) ? '★ Unstar' : '☆ Star'}
                                 </button>
@@ -1099,28 +1218,118 @@ function App() {
             </section>
 
             {menu && (
-                <div
-                    className="context-menu"
-                    style={{
-                        left: Math.min(menu.x, window.innerWidth - 150),
-                        top: Math.min(menu.y, window.innerHeight - 60),
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                >
-                    {buildMenu(menu.script).map((item) => (
-                        <button
-                            key={item.label}
-                            className="context-item"
-                            onClick={() => {
-                                setMenu(null);
-                                item.run();
-                            }}
-                        >
-                            {item.label}
-                        </button>
-                    ))}
-                </div>
+                <ContextMenu
+                    menu={menu}
+                    buildMenu={buildMenu}
+                    hoveredSubmenu={hoveredSubmenu}
+                    setHoveredSubmenu={setHoveredSubmenu}
+                    pinnedSubmenu={pinnedSubmenu}
+                    setPinnedSubmenu={setPinnedSubmenu}
+                    closeMenu={() => setMenu(null)}
+                />
             )}
+        </div>
+    );
+}
+
+// ContextMenu component with hover + click submenu support
+function ContextMenu({
+    menu,
+    buildMenu,
+    hoveredSubmenu,
+    setHoveredSubmenu,
+    pinnedSubmenu,
+    setPinnedSubmenu,
+    closeMenu,
+}: {
+    menu: MenuState;
+    buildMenu: (script: types.ScriptView) => MenuItem[];
+    hoveredSubmenu: string | null;
+    setHoveredSubmenu: (id: string | null) => void;
+    pinnedSubmenu: string | null;
+    setPinnedSubmenu: (id: string | null) => void;
+    closeMenu: () => void;
+}) {
+    const items = buildMenu(menu.script);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Close menu on outside click
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                closeMenu();
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [closeMenu]);
+
+    const renderItems = (items: MenuItem[], depth: number = 0) => (
+        <ul className="context-menu-list" role="menu">
+            {items.map((item, index) => {
+                const itemId = `${depth}-${index}-${item.label}`;
+                const isSubmenuOpen = (hoveredSubmenu === itemId || pinnedSubmenu === itemId) && !!item.submenu;
+                const isDisabled = item.disabled;
+
+                if (item.disabled) {
+                    return <li key={itemId} className="context-separator" role="separator" />;
+                }
+
+                return (
+                    <li key={itemId} className="context-menu-item" role="none">
+                        {item.submenu ? (
+                            <div className="context-submenu-wrapper">
+                                <button
+                                    className="context-item has-submenu"
+                                    role="menuitem"
+                                    aria-haspopup="true"
+                                    aria-expanded={isSubmenuOpen}
+                                    onMouseEnter={() => !pinnedSubmenu && setHoveredSubmenu(itemId)}
+                                    onMouseLeave={() => !pinnedSubmenu && setHoveredSubmenu(null)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPinnedSubmenu(pinnedSubmenu === itemId ? null : itemId);
+                                    }}
+                                >
+                                    <span>{item.label}</span>
+                                    <span className="submenu-arrow">▸</span>
+                                </button>
+                                {isSubmenuOpen && (
+                                    <div className="context-submenu" style={{left: '100%', top: 0}}>
+                                        {renderItems(item.submenu, depth + 1)}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <button
+                                className="context-item"
+                                role="menuitem"
+                                onClick={() => {
+                                    closeMenu();
+                                    item.run?.();
+                                }}
+                            >
+                                {item.label}
+                            </button>
+                        )}
+                    </li>
+                );
+            })}
+        </ul>
+    );
+
+    return (
+        <div
+            ref={containerRef}
+            className="context-menu"
+            style={{
+                left: Math.min(menu.x, window.innerWidth - 200),
+                top: Math.min(menu.y, window.innerHeight - 200),
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            role="menu"
+        >
+            {renderItems(items)}
         </div>
     );
 }

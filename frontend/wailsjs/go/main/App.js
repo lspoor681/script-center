@@ -14,12 +14,28 @@ export function CopyText(arg1) {
   return window['go']['main']['App']['CopyText'](arg1);
 }
 
+export function DetectEditors() {
+  return window['go']['main']['App']['DetectEditors']();
+}
+
 export function Explain(arg1, arg2) {
   return window['go']['main']['App']['Explain'](arg1, arg2);
 }
 
+export function GetGlobalEditorConfig() {
+  return window['go']['main']['App']['GetGlobalEditorConfig']();
+}
+
+export function GetPreferredEditor(arg1) {
+  return window['go']['main']['App']['GetPreferredEditor'](arg1);
+}
+
 export function Invalidate(arg1, arg2) {
   return window['go']['main']['App']['Invalidate'](arg1, arg2);
+}
+
+export function OpenFile(arg1, arg2) {
+  return window['go']['main']['App']['OpenFile'](arg1, arg2);
 }
 
 export function OpenRoot(arg1) {
@@ -46,8 +62,20 @@ export function RunScript(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['RunScript'](arg1, arg2, arg3, arg4);
 }
 
+export function SaveGlobalEditorConfig(arg1) {
+  return window['go']['main']['App']['SaveGlobalEditorConfig'](arg1);
+}
+
 export function SendInput(arg1, arg2) {
   return window['go']['main']['App']['SendInput'](arg1, arg2);
+}
+
+export function SetGlobalPreferredEditor(arg1, arg2) {
+  return window['go']['main']['App']['SetGlobalPreferredEditor'](arg1, arg2);
+}
+
+export function SetWorkspacePreferredEditor(arg1, arg2) {
+  return window['go']['main']['App']['SetWorkspacePreferredEditor'](arg1, arg2);
 }
 
 export function Status() {

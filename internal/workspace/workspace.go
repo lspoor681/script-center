@@ -42,6 +42,9 @@ type Workspace struct {
 	// Favorites is a slice rather than a set so the file stays legible and
 	// editable by hand. It is small by nature, so linear lookups are fine.
 	Favorites []Ref `json:"favorites,omitempty"`
+	// EditorPrefs maps file extensions to editor IDs for workspace-specific
+	// editor preferences. These override global settings.
+	EditorPrefs map[string]string `json:"editor_prefs,omitempty"`
 }
 
 // New returns an empty workspace.
@@ -200,6 +203,12 @@ func (w *Workspace) Snapshot() *Workspace {
 	clone := *w
 	clone.Roots = append([]Root(nil), w.Roots...)
 	clone.Favorites = append([]Ref(nil), w.Favorites...)
+	if w.EditorPrefs != nil {
+		clone.EditorPrefs = make(map[string]string, len(w.EditorPrefs))
+		for k, v := range w.EditorPrefs {
+			clone.EditorPrefs[k] = v
+		}
+	}
 	return &clone
 }
 

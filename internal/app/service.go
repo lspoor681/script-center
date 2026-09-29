@@ -22,8 +22,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/lspoor/script-center/internal/detect"
+	"github.com/lspoor/script-center/internal/editor"
 	"github.com/lspoor/script-center/internal/params"
+	"github.com/lspoor/script-center/internal/proc"
 	"github.com/lspoor/script-center/internal/workspace"
 )
 
@@ -314,6 +318,159 @@ func (s *Service) IsFavorite(root, rel string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ws.IsFavorite(workspace.Ref{Root: root, Rel: rel})
+}
+
+// globalEditorConfigPath returns the path to the global editor config file.
+func (s *Service) globalEditorConfigPath() string {
+	return filepath.Join(s.configDir, "editors.toml")
+}
+
+// loadGlobalEditorConfig loads the global editor configuration from disk.
+func (s *Service) loadGlobalEditorConfig() (EditorConfig, error) {
+	var cfg EditorConfig
+	path := s.globalEditorConfigPath()
+	if _, err := os.Stat(path); err != nil {
+		return EditorConfig{
+			Preferences:  make(map[string]string),
+			KnownEditors: make(map[string]Editor),
+		}, nil
+	}
+	// Decode into a temporary struct with internal editor types
+	type internalConfig struct {
+		Preferences  map[string]string        `toml:"preferences"`
+		KnownEditors map[string]editor.Editor `toml:"known_editors"`
+	}
+	var internal internalConfig
+	_, err := toml.DecodeFile(path, &internal)
+	if internal.Preferences == nil {
+		internal.Preferences = make(map[string]string)
+	}
+	if internal.KnownEditors == nil {
+		internal.KnownEditors = make(map[string]editor.Editor)
+	}
+	cfg.Preferences = internal.Preferences
+	cfg.KnownEditors = make(map[string]Editor, len(internal.KnownEditors))
+	for k, v := range internal.KnownEditors {
+		cfg.KnownEditors[k] = EditorFromInternal(v)
+	}
+	return cfg, err
+}
+
+// saveGlobalEditorConfig saves the global editor configuration to disk.
+func (s *Service) saveGlobalEditorConfig(cfg EditorConfig) error {
+	f, err := os.Create(s.globalEditorConfigPath())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	// Encode with internal editor types for TOML
+	type internalConfig struct {
+		Preferences  map[string]string        `toml:"preferences"`
+		KnownEditors map[string]editor.Editor `toml:"known_editors"`
+	}
+	internal := internalConfig{
+		Preferences:  cfg.Preferences,
+		KnownEditors: make(map[string]editor.Editor, len(cfg.KnownEditors)),
+	}
+	for k, v := range cfg.KnownEditors {
+		internal.KnownEditors[k] = editor.Editor{
+			ID:          v.ID,
+			Name:        v.Name,
+			Executable:  v.Executable,
+			Args:        v.Args,
+			Terminal:    v.Terminal,
+			TerminalCmd: v.TerminalCmd,
+			Extensions:  v.Extensions,
+			Source:      v.Source,
+		}
+	}
+	if err := toml.NewEncoder(f).Encode(internal); err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// DetectEditors returns the list of available editors on the system.
+func (s *Service) DetectEditors() []Editor {
+	internal := editor.DetectPlatformEditors()
+	out := make([]Editor, len(internal))
+	for i, e := range internal {
+		out[i] = EditorFromInternal(e)
+	}
+	return out
+}
+
+// OpenFile opens a file with the specified editor.
+// editorID "system" means use OS default.
+func (s *Service) OpenFile(path, editorID string) error {
+	return proc.OpenFile(path, editorID)
+}
+
+// GetPreferredEditor returns the preferred editor for a file extension.
+// It checks workspace override first, then global config, then defaults.
+func (s *Service) GetPreferredEditor(ext string) PreferredEditorResult {
+	// 1. Workspace override
+	s.mu.Lock()
+	ws := s.ws.Snapshot()
+	s.mu.Unlock()
+	if ws.EditorPrefs != nil {
+		if id, ok := ws.EditorPrefs[ext]; ok {
+			return PreferredEditorResult{EditorID: id, Source: "workspace", Found: true}
+		}
+	}
+
+	// 2. Global config
+	cfg, err := s.loadGlobalEditorConfig()
+	if err == nil && cfg.Preferences != nil {
+		if id, ok := cfg.Preferences[ext]; ok {
+			return PreferredEditorResult{EditorID: id, Source: "global", Found: true}
+		}
+	}
+
+	// 3. Default: Neovim if available
+	editors := s.DetectEditors()
+	for _, ed := range editors {
+		if ed.ID == "neovim" {
+			return PreferredEditorResult{EditorID: "neovim", Source: "default", Found: true}
+		}
+	}
+
+	// 4. System default
+	return PreferredEditorResult{EditorID: "system", Source: "default", Found: true}
+}
+
+// SetWorkspacePreferredEditor sets the workspace-specific preferred editor for an extension.
+func (s *Service) SetWorkspacePreferredEditor(ext, editorID string) error {
+	s.mu.Lock()
+	if s.ws.EditorPrefs == nil {
+		s.ws.EditorPrefs = make(map[string]string)
+	}
+	s.ws.EditorPrefs[ext] = editorID
+	s.mu.Unlock()
+	return s.saveWorkspace()
+}
+
+// SetGlobalPreferredEditor sets the global preferred editor for an extension.
+func (s *Service) SetGlobalPreferredEditor(ext, editorID string) error {
+	cfg, err := s.loadGlobalEditorConfig()
+	if err != nil {
+		return err
+	}
+	if cfg.Preferences == nil {
+		cfg.Preferences = make(map[string]string)
+	}
+	cfg.Preferences[ext] = editorID
+	return s.saveGlobalEditorConfig(cfg)
+}
+
+// GetGlobalEditorConfig returns the full global editor configuration.
+func (s *Service) GetGlobalEditorConfig() (EditorConfig, error) {
+	return s.loadGlobalEditorConfig()
+}
+
+// SaveGlobalEditorConfig saves the full global editor configuration.
+func (s *Service) SaveGlobalEditorConfig(cfg EditorConfig) error {
+	return s.saveGlobalEditorConfig(cfg)
 }
 
 // knownLanguages are the languages the app can read, in the order the window

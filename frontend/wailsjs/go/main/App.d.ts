@@ -8,9 +8,17 @@ export function ChooseRoot():Promise<any>;
 
 export function CopyText(arg1:string):Promise<void>;
 
+export function DetectEditors():Promise<Array<app.Editor>>;
+
 export function Explain(arg1:string,arg2:string):Promise<app.ExplainView>;
 
+export function GetGlobalEditorConfig():Promise<app.EditorConfig>;
+
+export function GetPreferredEditor(arg1:string):Promise<app.PreferredEditorResult>;
+
 export function Invalidate(arg1:string,arg2:string):Promise<app.ScriptView>;
+
+export function OpenFile(arg1:string,arg2:string):Promise<void>;
 
 export function OpenRoot(arg1:string):Promise<app.RootView>;
 
@@ -24,7 +32,13 @@ export function RevealFile(arg1:string):Promise<void>;
 
 export function RunScript(arg1:string,arg2:string,arg3:Array<string>,arg4:boolean):Promise<app.RunView>;
 
+export function SaveGlobalEditorConfig(arg1:app.EditorConfig):Promise<void>;
+
 export function SendInput(arg1:string,arg2:string):Promise<void>;
+
+export function SetGlobalPreferredEditor(arg1:string,arg2:string):Promise<void>;
+
+export function SetWorkspacePreferredEditor(arg1:string,arg2:string):Promise<void>;
 
 export function Status():Promise<app.Status>;
 
