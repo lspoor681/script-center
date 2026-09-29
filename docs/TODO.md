@@ -142,6 +142,11 @@ current plan of record.
       in `internal/params` plus a fill-in form in the run panel. Once it ships,
       the free-text argument box and the run input box are retired in its favour.
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
+- [ ] **Complex filter system.** A composable filter bar above the script list
+      that combines free-text search with facet chips (language, has-params,
+      modified, favorited, path prefix). Each facet adds a token; tokens can be
+      removed individually or cleared all at once. The favorites filter added
+      recently is the first facet; the rest generalize the pattern.
 - [ ] **Remote execution.** See the design sketch below.
 
 ## Remote execution design (not built)

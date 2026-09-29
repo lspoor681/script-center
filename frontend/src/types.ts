@@ -132,6 +132,8 @@ export type ScriptView = {
     // modified is true when git reports a change to this script. It is only
     // ever set for a script in a repository.
     modified?: boolean;
+    // favorite is true when the user has starred this script.
+    favorite?: boolean;
 };
 
 // GitCommit is the most recent commit on a root's branch, as the strip shows it.

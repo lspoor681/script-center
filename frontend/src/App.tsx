@@ -65,6 +65,8 @@ function App() {
     const [docPath, setDocPath] = useState<string>('');
     // The search box filters the already-loaded scripts of the selected root.
     const [query, setQuery] = useState('');
+    // When true, only favorited scripts are shown in the list.
+    const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     // The run panel shows the live output of the one active run. It is set here
     // rather than in the detail header because a run can start from a context
     // menu without a script being picked.
@@ -90,6 +92,8 @@ function App() {
     const [copied, setCopied] = useState(false);
     // The right-click menu on a script row, or null when closed.
     const [menu, setMenu] = useState<MenuState | null>(null);
+    // Favorites from the workspace, used to mark scripts in the list and detail.
+    const [favorites, setFavorites] = useState<types.Ref[]>([]);
 
     // Reading a root is the slow thing this app does, so every failure is shown
     // rather than swallowed and leaving the user with an empty window.
@@ -102,6 +106,7 @@ function App() {
         try {
             const ws = asWorkspace(await api.workspace());
             setRoots(ws.roots);
+            setFavorites(ws.favorites ?? []);
             setSelected((current) => current || ws.roots[0]?.path || '');
         } catch (err) {
             fail('reading the workspace', err);
@@ -361,10 +366,16 @@ function App() {
         try {
             const ws = asWorkspace(await api.toggleFavorite(script.root, script.rel));
             setRoots(ws.roots);
+            setFavorites(ws.favorites ?? []);
         } catch (err) {
             fail('starring the script', err);
         }
     }, [fail]);
+
+    // Check if a script is currently favorited.
+    const isFavorite = useCallback((script: types.ScriptView) => {
+        return favorites.some(f => f.root === script.root && f.rel === script.rel);
+    }, [favorites]);
 
     // Output arrives as events from the backend's runner, each tagged with the
     // id of the run it belongs to. A chunk is appended only while it matches
@@ -552,45 +563,34 @@ function App() {
         };
     }, [menu]);
 
-    // The context menu's items, in display order. An action is a one-line entry;
-    // the menu's positioning and dismissal apply to all of them.
-    const menus = useMemo(
-        () => [
-            {
-                label: 'Run',
-                run: (script: types.ScriptView) => {
-                    void startRun(script, '', false);
-                },
+    // Build the context menu items for a given script, so the Star label reflects
+    // the current favorite state.
+    const buildMenu = useCallback((script: types.ScriptView) => [
+        {
+            label: 'Run',
+            run: () => void startRun(script, '', false),
+        },
+        {
+            label: 'Run (Administrator)',
+            run: () => void startRun(script, '', true),
+        },
+        {
+            label: isFavorite(script) ? 'Unstar' : 'Star',
+            run: () => void star(script),
+        },
+        {
+            label: 'Copy path',
+            run: () => void copyText(script.path, 'path'),
+        },
+        {
+            label: 'Open file location',
+            run: () => {
+                api.revealFile(script.path).catch((err) => {
+                    fail('opening the file location', err);
+                });
             },
-            {
-                label: 'Run (Administrator)',
-                run: (script: types.ScriptView) => {
-                    void startRun(script, '', true);
-                },
-            },
-            {
-                label: 'Star',
-                run: (script: types.ScriptView) => {
-                    void star(script);
-                },
-            },
-            {
-                label: 'Copy path',
-                run: (script: types.ScriptView) => {
-                    void copyText(script.path, 'path');
-                },
-            },
-            {
-                label: 'Open file location',
-                run: (script: types.ScriptView) => {
-                    api.revealFile(script.path).catch((err) => {
-                        fail('opening the file location', err);
-                    });
-                },
-            },
-        ],
-        [startRun, fail, star, copyText],
-    );
+        },
+    ], [startRun, star, copyText, fail, isFavorite]);
 
     const missing = useMemo(
         () => tools.filter((tool) => !tool.available),
@@ -601,8 +601,13 @@ function App() {
     // the list shows are searched, plus the synopsis and parameter names a user
     // is likely to remember.
     const shown = useMemo(
-        () => (view?.scripts ?? []).filter((script) => matches(script, query)),
-        [view, query],
+        () => (view?.scripts ?? []).filter((script) => {
+            if (showFavoritesOnly && !isFavorite(script)) {
+                return false;
+            }
+            return matches(script, query);
+        }),
+        [view, query, showFavoritesOnly, isFavorite],
     );
 
     // Hoisted so the markup can branch on the count without repeating the
@@ -730,29 +735,39 @@ function App() {
                 )}
 
                 {view && (
-                    <label className="search">
-                        <input
-                            type="search"
-                            placeholder="Search these scripts…"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Escape') {
-                                    setQuery('');
-                                }
-                            }}
-                        />
-                        {query && (
-                            <button
-                                className="search-clear"
-                                type="button"
-                                aria-label="Clear search"
-                                onClick={() => setQuery('')}
-                            >
-                                ×
-                            </button>
-                        )}
-                    </label>
+                    <div className="search-row">
+                        <label className="search">
+                            <input
+                                type="search"
+                                placeholder="Search these scripts…"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                        setQuery('');
+                                    }
+                                }}
+                            />
+                            {query && (
+                                <button
+                                    className="search-clear"
+                                    type="button"
+                                    aria-label="Clear search"
+                                    onClick={() => setQuery('')}
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </label>
+                        <button
+                            className={`ghost filter-fav ${showFavoritesOnly ? 'active' : ''}`}
+                            title={showFavoritesOnly ? 'Show all scripts' : 'Show only favorites'}
+                            onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                            aria-pressed={showFavoritesOnly}
+                        >
+                            ★ Favorites
+                        </button>
+                    </div>
                 )}
 
                 {view && query.trim() && (
@@ -768,6 +783,7 @@ function App() {
                 <ul className="scripts">
                     {shown.map((script) => {
                         const count = script.metadata.params?.length ?? 0;
+                        const fav = isFavorite(script);
                         return (
                         <li
                             key={script.rel}
@@ -777,9 +793,10 @@ function App() {
                             }}
                         >
                             <button
-                                className={script.rel === picked?.rel ? 'script current' : 'script'}
+                                className={['script', script.rel === picked?.rel ? 'current' : '', fav ? 'favorited' : ''].join(' ').trim()}
                                 onClick={() => open(script)}
                             >
+                                <span className="star" title={fav ? 'Favorited' : 'Not favorited'}>{fav ? '★' : '☆'}</span>
                                 <span className="name">{highlight(script.name, query)}</span>
                                 <span className="where">{script.dir || '.'}</span>
                                 <span className="badges">
@@ -852,7 +869,7 @@ function App() {
                                     ▶ Run
                                 </button>
                                 <button className="ghost" onClick={() => void star(picked)}>
-                                    ☆ Star
+                                    {isFavorite(picked) ? '★ Unstar' : '☆ Star'}
                                 </button>
                             </div>
                         </header>
@@ -1090,14 +1107,13 @@ function App() {
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
-                    {menus.map((item) => (
+                    {buildMenu(menu.script).map((item) => (
                         <button
                             key={item.label}
                             className="context-item"
                             onClick={() => {
-                                const target = menu.script;
                                 setMenu(null);
-                                item.run(target);
+                                item.run();
                             }}
                         >
                             {item.label}

@@ -70,6 +70,12 @@ checked off or retired in the TODO at the end of each session.
   context menu and Copy command in the run panel use it.
 - **Git status manual refresh.** A ↻ button on the git strip re-reads the root,
   so the summary does not stall after edits.
+- **Star/favorite indicators.** The script list now shows a star column (★/☆)
+  and highlights favorited rows with a subtle accent background. The detail
+  panel's star button toggles between "☆ Star" and "★ Unstar". The right-click
+  context menu dynamically shows "Star" or "Unstar" based on the current state.
+  A "★ Favorites" filter button in the search row shows only starred scripts,
+  laying groundwork for a future composable filter system.
 
 ### Fixed
 

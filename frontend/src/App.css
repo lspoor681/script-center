@@ -247,6 +247,37 @@ button:focus-visible {
     color: var(--faint);
 }
 
+.search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 6px;
+}
+
+.search-row .search {
+    flex: 1;
+    margin: 0;
+}
+
+.filter-fav {
+    padding: 5px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--faint);
+    border-color: var(--line);
+}
+
+.filter-fav:hover {
+    background: var(--raised);
+    color: var(--text);
+}
+
+.filter-fav.active {
+    background: color-mix(in srgb, var(--accent) 12%, var(--base));
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
 .search-clear:hover {
     color: var(--text);
     background: var(--raised);
@@ -342,12 +373,16 @@ mark {
        sees a control that cannot be clicked. */
     min-width: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "name badges" "where badges";
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    grid-template-areas: "star name badges" "star where badges";
     gap: 0 8px;
     padding: 6px 8px;
     border-radius: 5px;
     text-align: left;
+}
+
+.script.favorited {
+    background: color-mix(in srgb, var(--accent) 8%, var(--base));
 }
 
 .script:hover {
@@ -357,6 +392,21 @@ mark {
 .script.current {
     background: var(--raised);
     box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.script .star {
+    grid-area: star;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    font-size: 13px;
+    color: var(--faint);
+    cursor: default;
+}
+
+.script.favorited .star {
+    color: var(--accent);
 }
 
 .script .name {
