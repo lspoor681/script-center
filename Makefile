@@ -1,6 +1,4 @@
 GO           ?= go
-WAILS        ?= wails
-GOLANGCI_LINT?= golangci-lint
 FRONTEND     := frontend
 
 # Wails v2 defaults its cgo pkg-config flags to webkit2gtk-4.0, which is absent
@@ -10,12 +8,31 @@ FRONTEND     := frontend
 # genuinely only provides 4.0.
 WAILS_TAGS   ?= webkit2_41
 
-# The Wails CLI is installed with `go install`, and GOBIN is redirected into
-# the mise-managed Go tree, so the binary is not necessarily on PATH.
+# The Wails CLI and golangci-lint are installed with `go install`, and GOBIN is
+# redirected into the mise-managed Go tree, so the binaries are not necessarily
+# on PATH. Prefer a tool that is on PATH — a system package or a pinned
+# install is the one the user meant — and fall back to GOBIN, or to GOPATH/bin
+# when GOBIN is unset, which is where `go install` puts them by default. Without
+# this, `make lint` and `make build` fail with "No such file or directory" on
+# exactly the machines that ran `make tools` successfully.
 GOBIN_DIR    := $(shell $(GO) env GOBIN 2>/dev/null)
 ifeq ($(strip $(GOBIN_DIR)),)
-GOBIN_DIR    := $(shell $(GO) env GOPATH)/bin
+GOBIN_DIR    := $(patsubst %/,%,$(shell $(GO) env GOPATH 2>/dev/null))/bin
 endif
+# An empty GOPATH above yields "/bin", which is worse than no prefix at all.
+ifneq ($(GOBIN_DIR),/bin)
+else
+GOBIN_DIR    :=
+endif
+
+# When GOBIN_DIR is empty — $(GO) itself may be a mise shim that is not on PATH
+# in a stripped environment — prefixing it would turn every tool into a bogus
+# absolute path like /golangci-lint, so leave the bare name and let the recipe
+# report the missing tool itself.
+tool = $(shell command -v $(1) 2>/dev/null || echo $(if $(GOBIN_DIR),$(GOBIN_DIR)/,)$(1))
+
+WAILS        ?= $(call tool,wails)
+GOLANGCI_LINT?= $(call tool,golangci-lint)
 
 .DEFAULT_GOAL := help
 
