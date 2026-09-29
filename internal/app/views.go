@@ -155,6 +155,24 @@ type ReadStage struct {
 	Total int `json:"total"`
 }
 
+// GitRefresh is the repository state of a root, re-read without re-reading the
+// directory.
+//
+// It exists because the git strip goes stale whenever the user commits in
+// another application, and re-reading a whole root to notice is more than a
+// window focus should cost. The window applies it to the view it already holds
+// rather than replacing it, so the script list and the metadata already read for
+// each script are untouched.
+type GitRefresh struct {
+	// Status is nil when the root is not a repository or git cannot describe it,
+	// which is how a root view already says it has no git to show.
+	Status *GitStatus `json:"status,omitempty"`
+	// Modified lists the scripts git reports as changed, as paths relative to
+	// the root in the scan's form, so the row badges can be set without
+	// re-reading the scripts.
+	Modified []string `json:"modified,omitempty"`
+}
+
 // RootView is one scanned root with metadata for every script in it.
 type RootView struct {
 	Root    string       `json:"root"`

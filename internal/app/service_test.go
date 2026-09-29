@@ -1,12 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -1178,5 +1180,149 @@ func TestOpenRootWithNoEmitterDoesNotPanic(t *testing.T) {
 	service, _ := newTestService(t)
 	if _, err := service.OpenRoot(context.Background(), scriptTree(t)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRefreshGitReportsTheStateWithoutReReadingTheRoot(t *testing.T) {
+	// The point of a focus refresh is that it is cheap. It re-reads the
+	// repository and nothing else, so the expensive metadata read is not
+	// repeated: the second call has to report fromCache for every script, which
+	// is what an OpenRoot would also do, but the only way to tell the two apart
+	// is that RefreshGit does not report a view at all and cannot be made to
+	// re-read a script.
+	service, _ := newTestService(t)
+	root := scriptTree(t)
+	if !gitRepo(t, root) {
+		t.Skip("git is not installed, so this root has no repository to refresh")
+	}
+
+	if _, err := service.OpenRoot(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+
+	refresh := service.RefreshGit(context.Background(), root)
+	if refresh.Status == nil {
+		t.Fatal("a repository refreshed to no status at all")
+	}
+	if refresh.Status.Branch == "" {
+		t.Error("a repository has a branch, and it is what the strip leads with")
+	}
+	// A clean tree changes nothing, which is the case the badges depend on.
+	if len(refresh.Modified) != 0 {
+		t.Errorf("a freshly committed tree reported %v as modified", refresh.Modified)
+	}
+
+	// Now edit a script and check the badge set follows git, not the view.
+	if err := os.WriteFile(filepath.Join(root, "rebuild.sh"), []byte("#!/bin/bash\necho edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refresh = service.RefreshGit(context.Background(), root)
+	if len(refresh.Modified) != 1 || refresh.Modified[0] != "rebuild.sh" {
+		t.Errorf("Modified = %v, want [rebuild.sh]", refresh.Modified)
+	}
+	if refresh.Status.Unstaged != 1 {
+		t.Errorf("Unstaged = %d, want 1", refresh.Status.Unstaged)
+	}
+
+	// A commit made elsewhere changes the strip and the badges but not one
+	// script's metadata, so a refresh must not read the directory. Proved by
+	// refreshing a root that has never been opened: if the refresh had read
+	// anything, the first open that follows would be served from its cache.
+	scratch, _ := newTestService(t)
+	fresh := scriptTree(t)
+	if !gitRepo(t, fresh) {
+		t.Skip("git is not installed, so this root has no repository to refresh")
+	}
+	scratch.RefreshGit(context.Background(), fresh)
+	opened, err := scratch.OpenRoot(context.Background(), fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened.Meta.FromCache != 0 {
+		t.Errorf("the refresh read %d scripts, want 0: it is meant to touch only git", opened.Meta.FromCache)
+	}
+}
+
+func TestRefreshGitListsModifiedPathsSorted(t *testing.T) {
+	// The set comes out of a map, and the window receives it over JSON, so the
+	// same repository state has to serialize the same way every time or a diff
+	// of two refreshes is meaningless.
+	service, _ := newTestService(t)
+	root := scriptTree(t)
+	if !gitRepo(t, root) {
+		t.Skip("git is not installed, so this root has no repository to refresh")
+	}
+	for _, name := range []string{"zebra.sh", "apple.sh", "mango.sh"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("#!/bin/bash\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	refresh := service.RefreshGit(context.Background(), root)
+	want := []string{"apple.sh", "mango.sh", "zebra.sh"}
+	if !reflect.DeepEqual(refresh.Modified, want) {
+		t.Errorf("Modified = %v, want %v", refresh.Modified, want)
+	}
+}
+
+func TestRefreshGitOnAPlainDirectoryReportsNoStatus(t *testing.T) {
+	// A folder that is not a repository has no strip, and the window needs to be
+	// able to say so rather than being handed an error to raise about a focus.
+	service, _ := newTestService(t)
+
+	refresh := service.RefreshGit(context.Background(), scriptTree(t))
+	if refresh.Status != nil {
+		t.Errorf("a plain directory reported status %+v", refresh.Status)
+	}
+	if len(refresh.Modified) != 0 {
+		t.Errorf("a plain directory reported %v as modified", refresh.Modified)
+	}
+}
+
+func TestRefreshGitOnAMissingRootDoesNotError(t *testing.T) {
+	// A focus arrives whether or not the folder is still there. A root deleted
+	// while the application was closed has no repository state, and that is not
+	// an error worth interrupting the user for.
+	service, _ := newTestService(t)
+
+	refresh := service.RefreshGit(context.Background(), filepath.Join(t.TempDir(), "gone"))
+	if refresh == nil {
+		t.Fatal("a missing root returned no refresh at all, want an empty one")
+	}
+	if refresh.Status != nil {
+		t.Errorf("a missing root reported status %+v", refresh.Status)
+	}
+}
+
+func TestRefreshGitDoesNotChangeWhatTheRootAlreadyReported(t *testing.T) {
+	// A refresh returns its own result rather than editing the view the
+	// application already handed the window. The window holds a published view
+	// that is never written to, and a refresh that mutated it would be the
+	// caller writing to state it was given.
+	service, _ := newTestService(t)
+	root := scriptTree(t)
+	if !gitRepo(t, root) {
+		t.Skip("git is not installed, so this root has no repository to refresh")
+	}
+	view, err := service.OpenRoot(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "rebuild.sh"), []byte("#!/bin/bash\n# changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service.RefreshGit(context.Background(), root)
+
+	after, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("RefreshGit changed a view it had already returned")
 	}
 }

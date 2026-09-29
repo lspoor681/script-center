@@ -26,6 +26,10 @@ export function OpenRoot(arg1) {
   return window['go']['main']['App']['OpenRoot'](arg1);
 }
 
+export function RefreshGit(arg1) {
+  return window['go']['main']['App']['RefreshGit'](arg1);
+}
+
 export function RemoveRoot(arg1) {
   return window['go']['main']['App']['RemoveRoot'](arg1);
 }

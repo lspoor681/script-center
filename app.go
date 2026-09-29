@@ -78,6 +78,15 @@ func (a *App) OpenRoot(root string) (*app.RootView, error) {
 	return a.service.OpenRoot(a.ctxOrBackground(), root)
 }
 
+// RefreshGit re-reads a root's repository state and changed scripts without
+// re-reading its directory, so the strip is current when the window comes back
+// to the foreground. The window calls this on focus rather than re-opening the
+// root, because a commit made elsewhere changes the strip and the row badges
+// but not a single script's metadata.
+func (a *App) RefreshGit(root string) *app.GitRefresh {
+	return a.service.RefreshGit(a.ctxOrBackground(), root)
+}
+
 // Explain returns a script's documentation and the scripts related to it.
 func (a *App) Explain(root, rel string) (*app.ExplainView, error) {
 	return a.service.Explain(a.ctxOrBackground(), root, rel)

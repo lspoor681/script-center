@@ -14,6 +14,8 @@ export function Invalidate(arg1:string,arg2:string):Promise<app.ScriptView>;
 
 export function OpenRoot(arg1:string):Promise<app.RootView>;
 
+export function RefreshGit(arg1:string):Promise<app.GitRefresh>;
+
 export function RemoveRoot(arg1:string):Promise<any>;
 
 export function RenderDocument(arg1:string,arg2:string,arg3:string):Promise<app.DocumentView>;

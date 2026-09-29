@@ -351,6 +351,37 @@ func (s *Service) gitFor(ctx context.Context, root string) *GitStatus {
 	return status
 }
 
+// RefreshGit re-reads a root's repository state and the set of changed scripts
+// without re-reading the directory.
+//
+// It is a separate call from OpenRoot because the two answer different
+// questions. OpenRoot re-reads every script's metadata, which is the expensive
+// part and is not needed to learn that a commit happened somewhere else. A
+// window focus needs only the strip and the row badges, which is three git
+// invocations, and re-reading a hundred scripts to find out that would be a poor
+// trade for coming back to the window.
+//
+// The result carries no view and mutates no cached state, so the window applies
+// it to the view it already holds. A root it has not read yet, or one that is no
+// longer a repository, comes back with a nil status, which is how a root view
+// already says it has no git to show.
+func (s *Service) RefreshGit(ctx context.Context, root string) *GitRefresh {
+	absolute, err := existingDir(root)
+	if err != nil {
+		// A root that has gone away has no repository state, and a focus is not
+		// a moment to raise an error about a folder the user is not looking at.
+		return &GitRefresh{}
+	}
+	refresh := &GitRefresh{Status: s.gitFor(ctx, absolute)}
+	for rel := range gitModified(ctx, absolute) {
+		refresh.Modified = append(refresh.Modified, rel)
+	}
+	// Map iteration is random, and the window receives this over JSON, so the
+	// order has to be chosen or the same state serializes differently each time.
+	sort.Strings(refresh.Modified)
+	return refresh
+}
+
 // gitModified returns the set of paths git reports as changed under a root,
 // keyed by the scan's relative-path form so it can be looked up per script. A
 // repository that fails to be read leaves the set empty rather than failing the

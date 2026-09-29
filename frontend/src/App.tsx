@@ -53,6 +53,9 @@ function App() {
     // re-subscribed every time a read starts.
     const [readStage, setReadStage] = useState<types.ReadStage | null>(null);
     const readingRoot = useRef<string>('');
+    // Whether a git refresh is in flight, which makes a focus during one a
+    // no-op rather than a second set of git invocations.
+    const refreshingGit = useRef(false);
     const [error, setError] = useState<string>('');
     // The document being read, and which of the script's documents is chosen.
     // A readme is not fetched with the script because it can be far larger
@@ -156,6 +159,108 @@ function App() {
         }
         void loadRoot(selected);
     }, [selected, loadRoot]);
+
+    // The git strip goes stale whenever a commit is made in another
+    // application, and the user has no reason to come back to this window and
+    // press ↻ to find out. Coming back to the window is the signal that
+    // something may have changed, so a focus re-reads the repository state.
+    //
+    // It re-reads the repository and not the folder: a commit elsewhere changes
+    // the strip and the row badges but not one script's metadata, and re-reading
+    // a hundred scripts' metadata to redraw a strip is a poor trade for the user
+    // coming back to a window.
+    const refreshGit = useCallback(async (root: string) => {
+        // A refresh that is still running when another focus arrives would be
+        // answered by the first, and the second answer could be the older of the
+        // two if they return out of order. The ref is what makes a second focus
+        // a no-op rather than a second set of git invocations.
+        if (refreshingGit.current) {
+            return;
+        }
+        refreshingGit.current = true;
+        try {
+            const refresh = await api.refreshGit(root);
+            // The root is re-checked after the await: a refresh started for one
+            // folder must not paint its answer onto another the user has since
+            // selected.
+            setView((current) => {
+                if (!current || current.root !== root) {
+                    return current;
+                }
+                const changed = new Set(refresh.modified ?? []);
+                return {
+                    ...current,
+                    // A nil status means the root is not a repository, or git
+                    // cannot describe it, which is how a view already says it
+                    // has no git to show.
+                    git: refresh.status ?? null,
+                    scripts: current.scripts.map((script) => (
+                        script.modified === changed.has(script.rel)
+                            ? script
+                            : {...script, modified: changed.has(script.rel)}
+                    )),
+                };
+            });
+        } catch {
+            // A focus is not a moment to raise an error about a strip nobody was
+            // looking at. The manual ↻ button is there for a refresh that has to
+            // be seen to fail.
+        } finally {
+            refreshingGit.current = false;
+        }
+    }, []);
+
+    // Refreshing on every focus event would start git three times for a window
+    // that regains focus repeatedly — a dialog opening and closing, another
+    // application being clicked through — and each of those is a cost the user
+    // did not ask for. A focus is throttled to one refresh every couple of
+    // seconds, and the last focus in a burst still gets its refresh rather than
+    // being dropped, so the state is current when the burst ends.
+    useEffect(() => {
+        const wait = 2000;
+        let last = 0;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const onFocus = () => {
+            // A root that is not a repository has no strip to refresh, and a
+            // refresh in flight is a refresh that is already happening.
+            if (!view?.isRepo || refreshingGit.current) {
+                return;
+            }
+            // A window that is being hidden has not been focused, and refreshing
+            // against a repository the user has not looked at is work with no
+            // reader.
+            if (document.hidden) {
+                return;
+            }
+            const root = view.root;
+            const since = Date.now() - last;
+            if (since >= wait) {
+                last = Date.now();
+                void refreshGit(root);
+                return;
+            }
+            // Inside the window: schedule the tail rather than dropping the
+            // focus, so the state is current once the user settles.
+            if (timer === null) {
+                timer = setTimeout(() => {
+                    timer = null;
+                    last = Date.now();
+                    if (!document.hidden) {
+                        void refreshGit(root);
+                    }
+                }, wait - since);
+            }
+        };
+
+        window.addEventListener('focus', onFocus);
+        return () => {
+            window.removeEventListener('focus', onFocus);
+            if (timer !== null) {
+                clearTimeout(timer);
+            }
+        };
+    }, [view, refreshGit]);
 
     // Opening a script is a second step: the list is cheap to show, the
     // documentation is not, so it is only fetched when a script is chosen.

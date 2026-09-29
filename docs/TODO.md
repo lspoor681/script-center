@@ -129,9 +129,12 @@ current plan of record.
       many scripts that is, which is where the time actually goes, and each event
       carries the root it belongs to so a stage for a folder you have left is
       dropped rather than shown against the wrong one.
-- [ ] **Git status refresh on window focus.** The strip already has a manual ↻
-      button, which shipped. What is left is a trigger, so the summary is
-      current when you come back to the window after committing outside the app.
+- [x] **Git status refresh on window focus.** The strip and the edited badges
+      now re-read themselves when the window comes back to the foreground, so a
+      commit made in a terminal is reflected without pressing ↻. A focus
+      re-reads the repository and nothing else — a commit changes the strip and
+      the badges but not a script's metadata — and it is throttled so a window
+      that regains focus repeatedly does not run git each time.
 - [ ] **Remote execution.** See the design sketch below.
 
 ## Remote execution design (not built)

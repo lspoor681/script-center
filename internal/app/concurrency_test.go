@@ -321,3 +321,34 @@ func TestConcurrentOpenRootAttributesStagesToTheirOwnRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestConcurrentGitRefreshesDoNotRace(t *testing.T) {
+	// A focus, the manual refresh button, and a background status poll are three
+	// independent requests that can land together, and they all reach the
+	// repository through the same helpers. Nothing here serializes them, so this
+	// is the test that keeps a double click on ↻ from reaching a shared map
+	// unsynchronized.
+	service, _ := newTestService(t)
+	root := scriptTree(t)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 6; j++ {
+				// Half the goroutines refresh and half re-read, so the two paths
+				// that share git state overlap rather than merely coexisting.
+				if (i+j)%2 == 0 {
+					if _, err := service.OpenRoot(context.Background(), root); err != nil {
+						t.Error(err)
+						return
+					}
+					continue
+				}
+				service.RefreshGit(context.Background(), root)
+			}
+		}(i)
+	}
+	wg.Wait()
+}

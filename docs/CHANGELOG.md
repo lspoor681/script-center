@@ -10,6 +10,13 @@ checked off or retired in the TODO at the end of each session.
 
 ### Added
 
+- **The git strip follows you back to the window.** Bringing the window to the
+  front re-reads the repository state and the edited badges, so a commit made in
+  a terminal is reflected without pressing ↻. A focus re-reads the repository
+  and nothing else, because a commit changes the strip and the badges but not a
+  script's metadata, and it is throttled so a window that regains focus
+  repeatedly — a dialog opening, another application clicked through — does not
+  run git each time.
 - **Reads say what they are waiting on.** Opening a folder reports each of its
   three slow steps as it happens instead of showing one "Reading…" label:
   reading the directory, harvesting parameters, and querying git. The harvest

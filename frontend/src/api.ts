@@ -13,6 +13,7 @@ import {
     Explain as explainBinding,
     Invalidate as invalidateBinding,
     OpenRoot as openRootBinding,
+    RefreshGit as refreshGitBinding,
     RemoveRoot as removeRootBinding,
     RenderDocument as renderDocumentBinding,
     RevealFile as revealFileBinding,
@@ -27,6 +28,7 @@ import {
 import type {
     DocumentView,
     ExplainView,
+    GitRefresh,
     RootView,
     RunView,
     ScriptView,
@@ -63,6 +65,10 @@ export function toggleFavorite(root: string, rel: string): Promise<WorkspaceStat
 
 export function openRoot(root: string): Promise<RootView> {
     return wire<Promise<RootView>>(openRootBinding(root));
+}
+
+export function refreshGit(root: string): Promise<GitRefresh> {
+    return wire<Promise<GitRefresh>>(refreshGitBinding(root));
 }
 
 export function explain(root: string, rel: string): Promise<ExplainView> {

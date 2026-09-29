@@ -181,6 +181,16 @@ export type GitStatus = {
     remote?: string;
 };
 
+// GitRefresh is a root's repository state, re-read without re-reading its
+// directory. A focus refresh returns this and the window applies it to the view
+// it already holds, so the script list and the metadata already read for each
+// script are untouched. status is absent when the root is not a repository or
+// git cannot describe it.
+export type GitRefresh = {
+    status?: GitStatus;
+    modified?: string[];
+};
+
 // RunView is the start of a script run, returned from RunScript so the panel
 // can attach the streaming events to it by id. blind is true when the run was
 // started in its own window with administrator privileges, so it cannot send
@@ -202,7 +212,11 @@ export type RootView = {
     warnings?: string[];
     meta: Meta;
     // git is the repository state of the root, when the root is a repository.
-    git?: GitStatus;
+    // It is null rather than absent when the root is not one: the Go side has no
+    // omitempty on this field, so null is what arrives, and a type that said
+    // undefined would be a lie the window only found out about when it painted
+    // the strip.
+    git?: GitStatus | null;
 };
 
 export type ExplainView = {
