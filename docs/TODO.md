@@ -115,6 +115,25 @@ current plan of record.
       `XDG_CONFIG_HOME`, which Windows ignores for `%AppData%`; and a test
       assumed mode 000 means unreadable, which holds only where access is
       enforced by mode rather than by ACL.
+- [x] **Reading stage events.** A read reports each of its three slow steps to
+      the window as it happens: reading the directory, harvesting parameters, and
+      querying git. The harvest names the language it is about to read and how
+      many scripts that is, which is where the time actually goes, and each event
+      carries the root it belongs to so a stage for a folder you have left is
+      dropped rather than shown against the wrong one. Harvesting also ran the
+      extracted-toolchain memo through an unguarded map, so two overlapping reads
+      — switching folders while a read is still going — could crash the process;
+      it is now behind the same lock as the rest of the reader.
+- [x] **Git status refresh on window focus.** The strip and the edited badges
+      now re-read themselves when the window comes back to the foreground, so a
+      commit made in a terminal is reflected without pressing ↻. A focus
+      re-reads the repository and nothing else — a commit changes the strip and
+      the badges but not a script's metadata — and it is throttled so a window
+      that regains focus repeatedly does not run git each time.
+- [x] **Makefile tool resolution.** `make lint` and `make build` looked for
+      `wails` and `golangci-lint` on PATH only, so they failed on the machines
+      that had just run `make tools`, because `go install` writes to GOBIN. The
+      Makefile already computed GOBIN_DIR to explain why and then never used it.
 
 ## Backlog
 
@@ -123,18 +142,6 @@ current plan of record.
       in `internal/params` plus a fill-in form in the run panel. Once it ships,
       the free-text argument box and the run input box are retired in its favour.
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
-- [x] **Reading stage events.** A read reports each of its three slow steps to
-      the window as it happens: reading the directory, harvesting parameters, and
-      querying git. The harvest names the language it is about to read and how
-      many scripts that is, which is where the time actually goes, and each event
-      carries the root it belongs to so a stage for a folder you have left is
-      dropped rather than shown against the wrong one.
-- [x] **Git status refresh on window focus.** The strip and the edited badges
-      now re-read themselves when the window comes back to the foreground, so a
-      commit made in a terminal is reflected without pressing ↻. A focus
-      re-reads the repository and nothing else — a commit changes the strip and
-      the badges but not a script's metadata — and it is throttled so a window
-      that regains focus repeatedly does not run git each time.
 - [ ] **Remote execution.** See the design sketch below.
 
 ## Remote execution design (not built)

@@ -73,6 +73,15 @@ checked off or retired in the TODO at the end of each session.
 
 ### Fixed
 
+- **`make lint` and `make build` could not find the tools they had installed.**
+  The Makefile computed `GOBIN_DIR` and then never referenced it, so it looked
+  for `wails` and `golangci-lint` on PATH alone. `go install` writes to GOBIN,
+  which points into the mise-managed Go tree here, so both commands failed with
+  "No such file or directory" on exactly the machines that had run `make tools`.
+  They now prefer a tool on PATH and fall back to GOBIN, or to `GOPATH/bin` when
+  GOBIN is unset. This also means lint can be run without exporting anything,
+  which is how the two entries above were checked: they are real
+  golangci-lint findings, not cosmetic ones.
 - **Two overlapping directory reads could take the window down.** The parameter
   reader memoises the toolchain it finds for each language, and that memo is a
   map. A read re-run by the window and one started by its background refresh are
