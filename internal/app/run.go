@@ -316,12 +316,13 @@ func commandFor(script ScriptView, extra []string) (argv []string, dir string, e
 	if err != nil {
 		return nil, "", err
 	}
-	// The scan stores the directory relative to the root, so resolve a relative
-	// one here: the process working directory must be absolute, or the OS looks
-	// it up against this app's own directory and a nested script fails to start.
+	// The scan stores the directory relative to the root as a slash-separated
+	// path, so convert it before joining: the process working directory must be
+	// absolute and OS-native, or the OS looks it up against this app's own
+	// directory and a nested script fails to start on Windows.
 	dir = script.Dir
 	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(script.Root, dir)
+		dir = filepath.Join(script.Root, filepath.FromSlash(dir))
 	}
 	return argv, dir, nil
 }
