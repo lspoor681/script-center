@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import * as api from './api';
 import * as types from './types';
 import {BrowserOpenURL, EventsOn} from '../wailsjs/runtime/runtime';
+import {ParamForm} from './components/ParamForm';
 import './App.css';
 
 // The workspace crosses as a pointer to a struct rather than a named view type,
@@ -91,11 +92,13 @@ function App() {
     const [hoveredPath, setHoveredPath] = useState<string[]>([]);
     const [pinnedSubmenu, setPinnedSubmenu] = useState<string | null>(null);
     const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    // The run panel shows the live output of the one active run. It is set here
-    // rather than in the detail header because a run can start from a context
+// The run panel shows the live output of the one active run. It is set here
+    // rather than in the detail header because a run can also be started from a context
     // menu without a script being picked.
     const [run, setRun] = useState<RunState | null>(null);
     const [extraArgs, setExtraArgs] = useState('');
+    const [formValues, setFormValues] = useState<Record<string, any>>({});
+    const [formExpanded, setFormExpanded] = useState(true);
     // Requests the run start with administrator privileges, as the run bar's
     // checkbox. A script whose metadata demands elevation is checked and
     // locked regardless of what a user picks.
@@ -334,6 +337,8 @@ function App() {
         setDetail(null);
         setDoc(null);
         setDocPath('');
+        setFormValues({});
+        setFormExpanded(true);
         // Explaining is a second read of the same script, and clicking through a
         // list fires one per click, so two are in flight whenever the user moves
         // faster than the backend answers. Explaining a large script with a slow
@@ -625,7 +630,16 @@ function App() {
         awaitingRun.current = true;
         earlyRunEvents.current = [];
         try {
-            const view = await api.runScript(script.root, script.rel, splitArgs(extra), raised);
+            // If form has values, build argv from form; otherwise use extra args
+            const hasFormValues = Object.keys(formValues).length > 0;
+            let argv: string[];
+            if (hasFormValues) {
+                const built = await api.buildArgv(script.root, script.rel, formValues);
+                argv = built;
+            } else {
+                argv = splitArgs(extra);
+            }
+            const view = await api.runScript(script.root, script.rel, argv, raised);
             activeIdRef.current = view.id;
             setRun({
                 id: view.id,
@@ -665,7 +679,7 @@ function App() {
                 ? {...current, status: 'failed', error: message}
                 : null));
         }
-    }, [applyRunExit, applyRunOutput]);
+    }, [applyRunExit, applyRunOutput, formValues]);
 
     // A line typed into the run panel is written to the script's input, which
     // answers prompts such as the one sudo shows for a password. A blind run
@@ -1156,40 +1170,34 @@ function App() {
                             <p className="synopsis">{picked.metadata.help.synopsis}</p>
                         )}
 
-                        {detailParams.length > 0 ? (
-                            <table className="params">
-                                <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Default</th>
-                                    <th>Notes</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {detailParams.map((param) => (
-                                    <tr key={param.name}>
-                                        <td>
-                                            <code>{param.name}</code>
-                                            {(param.aliases?.join(', ')) && (
-                                                <span className="aliases"> {param.aliases?.join(', ')}</span>
-                                            )}
-                                            {param.required && <span className="required">required</span>}
-                                        </td>
-                                        <td className="type">{param.typeName || param.kind}</td>
-                                        <td className="default">{formatValue(param.default)}</td>
-                                        <td className="help">
-                                            {param.help}
-                                            {param.constraints?.map((c, i) => (
-                                                <span className="constraint" key={`${c.kind}-${i}`}>
-                                                    {formatConstraint(c)}
-                                                </span>
-                                            ))}
-                                        </td>
-                                    </tr>
-                                ))}
-                                </tbody>
-                            </table>
+{detailParams.length > 0 ? (
+                            <>
+                                <ParamForm
+                                    params={detailParams}
+                                    initialValues={formValues}
+                                    onChange={setFormValues}
+                                    expanded={formExpanded}
+                                    onToggleExpand={setFormExpanded}
+                                />
+                                <details className="advanced-toggle">
+                                    <summary>Advanced: Raw arguments</summary>
+                                    <div className="advanced-content">
+                                        <label>Extra arguments (space-separated)</label>
+                                        <input
+                                            className="run-args"
+                                            placeholder="Extra arguments…"
+                                            value={extraArgs}
+                                            disabled={run?.status === 'running'}
+                                            onChange={(e) => setExtraArgs(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    void startRun(picked, extraArgs, adminRequired || runAsAdmin);
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </details>
+                            </>
                         ) : (
                             <p className="empty">
                                 This script has no parameter form. It will still run; you would
