@@ -20,10 +20,10 @@ func TestBuildArgvPowerShell(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		values      map[string]any
-		wantArgv    []string
-		wantError   bool
+		name      string
+		values    map[string]any
+		wantArgv  []string
+		wantError bool
 	}{
 		{
 			name: "all required provided",
