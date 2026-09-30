@@ -775,6 +775,7 @@ function App() {
     // the current favorite state.
     const buildMenu = useCallback((script: types.ScriptView): MenuItem[] => {
         const ext = script.path.slice(script.path.lastIndexOf('.')).toLowerCase();
+        // preferredEditor kept for future use (e.g., showing current default in tooltip)
         const preferredEditor = editors.find(e => e.id === 'neovim')?.name || 'Neovim';
         
         // Filter out the system editor from detected editors to avoid duplicates
@@ -841,7 +842,7 @@ function App() {
                 label: 'Open',
                 submenu: [
                     {
-                        label: `Open (${preferredEditor})`,
+                        label: 'Open',
                         run: () => void openWithPreferred(script),
                     },
                     {label: '──', disabled: true},
