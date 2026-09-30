@@ -79,6 +79,7 @@ function App() {
     // Track which submenu is currently hovered (for hover-to-open) or pinned (click-to-toggle)
     const [hoveredSubmenu, setHoveredSubmenu] = useState<string | null>(null);
     const [pinnedSubmenu, setPinnedSubmenu] = useState<string | null>(null);
+    const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // The run panel shows the live output of the one active run. It is set here
     // rather than in the detail header because a run can start from a context
     // menu without a script being picked.
@@ -606,10 +607,16 @@ function App() {
         if (!menu) {
             return;
         }
-        const close = () => setMenu(null);
+        const close = () => {
+            setMenu(null);
+            setPinnedSubmenu(null);
+            setHoveredSubmenu(null);
+        };
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 setMenu(null);
+                setPinnedSubmenu(null);
+                setHoveredSubmenu(null);
             }
         };
         window.addEventListener('mousedown', close);
@@ -626,8 +633,12 @@ function App() {
         const ext = script.path.slice(script.path.lastIndexOf('.')).toLowerCase();
         const preferredEditor = editors.find(e => e.id === 'neovim')?.name || 'Neovim';
         
+        // Filter out the system editor from detected editors to avoid duplicates
+        // (System Default is added explicitly below)
+        const userEditors = editors.filter(e => e.id !== 'system');
+        
         // Build the Open With submenu items
-        const openWithItems: MenuItem[] = editors.map(ed => ({
+        const openWithItems: MenuItem[] = userEditors.map(ed => ({
             label: ed.name + (ed.terminal ? ' (terminal)' : ''),
             run: () => void openWithEditor(script, ed.id),
         }));
@@ -638,7 +649,7 @@ function App() {
         });
 
         // Build the Set Default submenu items
-        const setDefaultItems: MenuItem[] = editors.map(ed => ({
+        const setDefaultItems: MenuItem[] = userEditors.map(ed => ({
             label: ed.name + (ed.terminal ? ' (terminal)' : ''),
             run: () => void setDefaultEditor(ext, ed.id, false),
         }));
@@ -648,7 +659,7 @@ function App() {
         });
         // Add global options with a separator
         setDefaultItems.push({label: '──', disabled: true});
-        setDefaultItems.push(...editors.map(ed => ({
+        setDefaultItems.push(...userEditors.map(ed => ({
             label: 'Global: ' + ed.name + (ed.terminal ? ' (terminal)' : ''),
             run: () => void setDefaultEditor(ext, ed.id, true),
         })));
@@ -1252,6 +1263,7 @@ function ContextMenu({
 }) {
     const items = buildMenu(menu.script);
     const containerRef = useRef<HTMLDivElement>(null);
+    const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Close menu on outside click
     useEffect(() => {
@@ -1263,6 +1275,34 @@ function ContextMenu({
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
     }, [closeMenu]);
+
+    // Clear hover timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (hoverTimeoutRef.current) {
+                clearTimeout(hoverTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    const clearHoverTimeout = () => {
+        if (hoverTimeoutRef.current) {
+            clearTimeout(hoverTimeoutRef.current);
+            hoverTimeoutRef.current = null;
+        }
+    };
+
+    const setHoveredWithDelay = (id: string | null) => {
+        clearHoverTimeout();
+        if (id) {
+            setHoveredSubmenu(id);
+        } else {
+            hoverTimeoutRef.current = setTimeout(() => {
+                setHoveredSubmenu(null);
+                hoverTimeoutRef.current = null;
+            }, 150);
+        }
+    };
 
     const renderItems = (items: MenuItem[], depth: number = 0) => (
         <ul className="context-menu-list" role="menu">
@@ -1284,8 +1324,8 @@ function ContextMenu({
                                     role="menuitem"
                                     aria-haspopup="true"
                                     aria-expanded={isSubmenuOpen}
-                                    onMouseEnter={() => !pinnedSubmenu && setHoveredSubmenu(itemId)}
-                                    onMouseLeave={() => !pinnedSubmenu && setHoveredSubmenu(null)}
+                                    onMouseEnter={() => !pinnedSubmenu && setHoveredWithDelay(itemId)}
+                                    onMouseLeave={() => !pinnedSubmenu && setHoveredWithDelay(null)}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setPinnedSubmenu(pinnedSubmenu === itemId ? null : itemId);
@@ -1295,7 +1335,12 @@ function ContextMenu({
                                     <span className="submenu-arrow">▸</span>
                                 </button>
                                 {isSubmenuOpen && (
-                                    <div className="context-submenu" style={{left: '100%', top: 0}}>
+                                    <div
+                                        className="context-submenu"
+                                        style={{left: '100%', top: 0}}
+                                        onMouseEnter={() => clearHoverTimeout()}
+                                        onMouseLeave={() => !pinnedSubmenu && setHoveredWithDelay(null)}
+                                    >
                                         {renderItems(item.submenu, depth + 1)}
                                     </div>
                                 )}
