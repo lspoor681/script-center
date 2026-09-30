@@ -162,6 +162,43 @@ current plan of record.
       missed on load and a refresh cleared it, treating an absent entry as clean.
       The status keys are rebased onto the scanned directory with `git rev-parse
       --show-prefix`, and paths above the root are dropped.
+- [x] **Four backend defects, and a test that was passing for the wrong reason.**
+      A workspace file that could not be read was silently discarded, so a
+      corrupt or too-new `workspaces.json` looked exactly like a first run: an
+      empty window with no reason to think the saved roots still existed. A
+      report saying a language's reader could not run was cached against the
+      script's size and timestamp like any other, so installing the toolchain
+      afterwards changed nothing and the script showed no parameters until it
+      was edited. The run panel's exit reason was read outside the runner's lock.
+      And the test meant to cover the first of these wrote its corrupt fixture as
+      `workspace.json` while the store reads `workspaces.json`, so the garbage was
+      never loaded and the assertions passed against an empty config directory.
+      All four are fixed; the fixture uses the store's own file name and asserts
+      a warning was produced, and a failed read is now marked `ReadFailed` and
+      kept out of the cache.
+- [x] **Three races that let the window show the wrong thing.** Clicking quickly
+      through roots could paint one folder's script list while the sidebar showed
+      another, because a root read cannot be cancelled and a slow one can land
+      last. The same applied to explaining a script, so one script's
+      documentation could appear under another's name. Re-reading matched on the
+      relative path alone, so a re-read in one root replaced the same-named script
+      in another — and two folders holding a `deploy.ps1` is ordinary, not an
+      accident. Reads and explanations are now sequenced and a stale answer is
+      dropped; a re-read matches on the root too.
+- [x] **A fast script could leave the run panel stuck on "running" forever.** A
+      run's output and exit are pushed by the backend, which starts pumping before
+      it answers the call returning the id, so for a script that prints something
+      and exits quickly both arrived before the window had an id to match them
+      against and were dropped by the guard against other runs' events. The panel
+      then claimed to be running a finished script, with a disabled Run button.
+      Events arriving while the start call is in flight are buffered and replayed.
+- [x] **A frontend test suite, and three operating systems in CI.** There was no
+      frontend test runner at all, so the window was covered only by building it
+      and looking at it. Vitest with jsdom now runs it, replacing `./api` and the
+      generated Wails runtime. macOS is in both CI matrices, because the tree has
+      platform files for it that no other runner compiled. A new Frontend job runs
+      the type-check and the tests directly rather than relying on them being
+      incidental to the Wails build.
 
 ## Backlog
 
@@ -174,9 +211,6 @@ current plan of record.
       problem, and the delay is what lets a script clean up after itself, so
       shortening it is a judgement call rather than a bug fix. It needs a
       `CloseConfig` passthrough on `internal/pty.Config` to be tunable at all.
-
-## Backlog
-
 - [ ] **Form-driven arguments.** Build the command line from the harvested
       parameter form instead of free-text extra arguments. Needs an argv builder
       in `internal/params` plus a fill-in form in the run panel. Once it ships,
