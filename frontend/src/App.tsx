@@ -77,7 +77,9 @@ function App() {
     // When true, only favorited scripts are shown in the list.
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     // Track which submenu is currently hovered (for hover-to-open) or pinned (click-to-toggle)
-    const [hoveredSubmenu, setHoveredSubmenu] = useState<string | null>(null);
+    // hoveredPath is an array of item IDs representing the hover path from root to current submenu
+    // e.g., ["0-5-Open", "1-2-Open with..."] means Open submenu is open and Open with... submenu is open
+    const [hoveredPath, setHoveredPath] = useState<string[]>([]);
     const [pinnedSubmenu, setPinnedSubmenu] = useState<string | null>(null);
     const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // The run panel shows the live output of the one active run. It is set here
@@ -610,13 +612,13 @@ function App() {
         const close = () => {
             setMenu(null);
             setPinnedSubmenu(null);
-            setHoveredSubmenu(null);
+            setHoveredPath([]);
         };
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 setMenu(null);
                 setPinnedSubmenu(null);
-                setHoveredSubmenu(null);
+                setHoveredPath([]);
             }
         };
         window.addEventListener('mousedown', close);
@@ -1232,8 +1234,8 @@ function App() {
                 <ContextMenu
                     menu={menu}
                     buildMenu={buildMenu}
-                    hoveredSubmenu={hoveredSubmenu}
-                    setHoveredSubmenu={setHoveredSubmenu}
+                    hoveredPath={hoveredPath}
+                    setHoveredPath={setHoveredPath}
                     pinnedSubmenu={pinnedSubmenu}
                     setPinnedSubmenu={setPinnedSubmenu}
                     closeMenu={() => setMenu(null)}
@@ -1244,19 +1246,21 @@ function App() {
 }
 
 // ContextMenu component with hover + click submenu support
+// hoveredPath is an array of item IDs representing the hover path from root to current submenu
+// e.g., ["0-5-Open", "1-2-Open with..."] means Open submenu is open and Open with... submenu is open
 function ContextMenu({
     menu,
     buildMenu,
-    hoveredSubmenu,
-    setHoveredSubmenu,
+    hoveredPath,
+    setHoveredPath,
     pinnedSubmenu,
     setPinnedSubmenu,
     closeMenu,
 }: {
     menu: MenuState;
     buildMenu: (script: types.ScriptView) => MenuItem[];
-    hoveredSubmenu: string | null;
-    setHoveredSubmenu: (id: string | null) => void;
+    hoveredPath: string[];
+    setHoveredPath: (path: string[]) => void;
     pinnedSubmenu: string | null;
     setPinnedSubmenu: (id: string | null) => void;
     closeMenu: () => void;
@@ -1292,23 +1296,63 @@ function ContextMenu({
         }
     };
 
-    const setHoveredWithDelay = (id: string | null) => {
+    // Check if a submenu at given depth with given itemId is open
+    const isSubmenuOpenAtDepth = (itemId: string, depth: number): boolean => {
+        // Pinned submenu takes precedence
+        if (pinnedSubmenu === itemId) return true;
+        // Check if this item's ID is at the correct depth in the hover path
+        return hoveredPath.length > depth && hoveredPath[depth] === itemId;
+    };
+
+    // Set hover path with delay
+    const setHoveredPathWithDelay = (newPath: string[] | null) => {
         clearHoverTimeout();
-        if (id) {
-            setHoveredSubmenu(id);
+        if (newPath) {
+            setHoveredPath(newPath);
         } else {
             hoverTimeoutRef.current = setTimeout(() => {
-                setHoveredSubmenu(null);
+                setHoveredPath([]);
                 hoverTimeoutRef.current = null;
             }, 150);
         }
+    };
+
+    // Handle mouse enter on a submenu trigger at given depth
+    const handleSubmenuEnter = (itemId: string, depth: number) => {
+        if (pinnedSubmenu) return;
+        // Truncate path at this depth and add the new item
+        const newPath = hoveredPath.slice(0, depth);
+        newPath[depth] = itemId;
+        setHoveredPathWithDelay(newPath);
+    };
+
+    // Handle mouse leave on a submenu trigger at given depth
+    const handleSubmenuLeave = (depth: number) => {
+        if (pinnedSubmenu) return;
+        // Delay clearing - will clear the path at this depth and beyond
+        hoverTimeoutRef.current = setTimeout(() => {
+            const newPath = hoveredPath.slice(0, depth);
+            setHoveredPath(newPath);
+            hoverTimeoutRef.current = null;
+        }, 150);
+    };
+
+    // Handle mouse leave on a submenu panel (the dropdown itself)
+    const handleSubmenuPanelLeave = (depth: number) => {
+        if (pinnedSubmenu) return;
+        // Delay clearing the item at this depth (the parent trigger)
+        hoverTimeoutRef.current = setTimeout(() => {
+            const newPath = hoveredPath.slice(0, depth);
+            setHoveredPath(newPath);
+            hoverTimeoutRef.current = null;
+        }, 150);
     };
 
     const renderItems = (items: MenuItem[], depth: number = 0) => (
         <ul className="context-menu-list" role="menu">
             {items.map((item, index) => {
                 const itemId = `${depth}-${index}-${item.label}`;
-                const isSubmenuOpen = (hoveredSubmenu === itemId || pinnedSubmenu === itemId) && !!item.submenu;
+                const isSubmenuOpen = isSubmenuOpenAtDepth(itemId, depth) && !!item.submenu;
                 const isDisabled = item.disabled;
 
                 if (item.disabled) {
@@ -1324,8 +1368,8 @@ function ContextMenu({
                                     role="menuitem"
                                     aria-haspopup="true"
                                     aria-expanded={isSubmenuOpen}
-                                    onMouseEnter={() => !pinnedSubmenu && setHoveredWithDelay(itemId)}
-                                    onMouseLeave={() => !pinnedSubmenu && setHoveredWithDelay(null)}
+                                    onMouseEnter={() => handleSubmenuEnter(itemId, depth)}
+                                    onMouseLeave={() => handleSubmenuLeave(depth)}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setPinnedSubmenu(pinnedSubmenu === itemId ? null : itemId);
@@ -1339,7 +1383,7 @@ function ContextMenu({
                                         className="context-submenu"
                                         style={{left: '100%', top: 0}}
                                         onMouseEnter={() => clearHoverTimeout()}
-                                        onMouseLeave={() => !pinnedSubmenu && setHoveredWithDelay(null)}
+                                        onMouseLeave={() => handleSubmenuPanelLeave(depth)}
                                     >
                                         {renderItems(item.submenu, depth + 1)}
                                     </div>
