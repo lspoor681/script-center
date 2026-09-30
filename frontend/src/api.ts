@@ -8,6 +8,7 @@
 // change to the Go side that breaks this shows up as a type error in one file.
 import {
     AddRoot as addRootBinding,
+    BuildArgv as buildArgvBinding,
     ChooseRoot as chooseRootBinding,
     CopyText as copyTextBinding,
     DetectEditors as detectEditorsBinding,
@@ -95,6 +96,14 @@ export function renderDocument(
 
 export function invalidate(root: string, rel: string): Promise<ScriptView> {
     return wire<Promise<ScriptView>>(invalidateBinding(root, rel));
+}
+
+export function buildArgv(
+    root: string,
+    rel: string,
+    values: Record<string, any>,
+): Promise<string[]> {
+    return wire<Promise<string[]>>(buildArgvBinding(root, rel, values));
 }
 
 export function runScript(

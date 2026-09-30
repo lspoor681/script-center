@@ -652,6 +652,7 @@ export namespace params {
 	    required: boolean;
 	    position?: number;
 	    fromPipeline?: boolean;
+	    nargs?: string;
 	    default?: Value;
 	    help?: string;
 	    constraints?: Constraint[];
@@ -669,6 +670,7 @@ export namespace params {
 	        this.required = source["required"];
 	        this.position = source["position"];
 	        this.fromPipeline = source["fromPipeline"];
+	        this.nargs = source["nargs"];
 	        this.default = this.convertValues(source["default"], Value);
 	        this.help = source["help"];
 	        this.constraints = this.convertValues(source["constraints"], Constraint);

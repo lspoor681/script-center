@@ -34,6 +34,7 @@ export type Param = {
     required: boolean;
     position?: number;
     fromPipeline?: boolean;
+    nargs?: string;
     default?: Value;
     help?: string;
     constraints?: Constraint[];

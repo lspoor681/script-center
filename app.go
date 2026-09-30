@@ -123,6 +123,12 @@ func (a *App) SendInput(id, text string) error {
 	return a.service.SendInput(id, text)
 }
 
+// BuildArgv builds the command-line arguments for a script from user-provided
+// parameter values.
+func (a *App) BuildArgv(root, rel string, values map[string]any) ([]string, error) {
+	return a.service.BuildArgv(a.ctxOrBackground(), root, rel, values)
+}
+
 // RevealFile opens the file's folder in the platform's file manager, with the
 // file itself selected. It backs the right-click menu's "Open file location".
 func (a *App) RevealFile(path string) error {

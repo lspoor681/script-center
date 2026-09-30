@@ -522,6 +522,23 @@ func (s *Service) Flush() error {
 	return s.cache.Save()
 }
 
+// BuildArgv builds the command-line arguments for a script from user-provided
+// parameter values. It uses the harvested parameter metadata to construct the
+// correct argv for the script's language.
+func (s *Service) BuildArgv(ctx context.Context, root, rel string, values map[string]any) ([]string, error) {
+	view, err := s.cachedRoot(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	script, ok := findScript(view, rel)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrNoScript, rel)
+	}
+
+	language := script.detectedLanguage().String()
+	return params.BuildArgv(script.Metadata, values, language)
+}
+
 // existingDir resolves a path and confirms it is a directory, which is what both
 // adding and opening a root require.
 func existingDir(path string) (string, error) {

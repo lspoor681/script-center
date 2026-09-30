@@ -6,6 +6,10 @@ export function AddRoot(arg1, arg2) {
   return window['go']['main']['App']['AddRoot'](arg1, arg2);
 }
 
+export function BuildArgv(arg1, arg2, arg3) {
+  return window['go']['main']['App']['BuildArgv'](arg1, arg2, arg3);
+}
+
 export function ChooseRoot() {
   return window['go']['main']['App']['ChooseRoot']();
 }

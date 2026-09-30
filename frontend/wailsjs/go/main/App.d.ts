@@ -4,6 +4,8 @@ import {app} from '../models';
 
 export function AddRoot(arg1:string,arg2:string):Promise<any>;
 
+export function BuildArgv(arg1:string,arg2:string,arg3:Record<string, any>):Promise<Array<string>>;
+
 export function ChooseRoot():Promise<any>;
 
 export function CopyText(arg1:string):Promise<void>;

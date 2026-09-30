@@ -182,6 +182,11 @@ type Param struct {
 	// the parameter is rarely set directly.
 	FromPipeline bool `json:"fromPipeline,omitempty"`
 
+	// Nargs is the argparse nargs value for Python scripts: "?", "*", "+",
+	// or "N" (exact count). Empty for other languages or when not specified.
+	// It determines how many values the argument consumes on the command line.
+	Nargs string `json:"nargs,omitempty"`
+
 	// Default is the parameter's default, or nil when there is none.
 	Default *Value `json:"default,omitempty"`
 

@@ -247,6 +247,7 @@ def parse_add_argument(call):
         "required": bool(literal(keywords.get("required")) is True) if "required" in keywords else positional,
         "position": 0,
         "fromPipeline": False,
+        "nargs": nargs if isinstance(nargs, str) else "",
     }
 
     if positional:
