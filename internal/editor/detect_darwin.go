@@ -1,3 +1,5 @@
+//go:build darwin
+
 package editor
 
 import (
@@ -5,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+// DetectDarwin returns the editors installed on macOS, ending with the system
+// default so the list is never empty.
 func DetectDarwin() []Editor {
 	var editors []Editor
 
@@ -97,3 +101,8 @@ func DetectDarwin() []Editor {
 
 	return editors
 }
+
+// detectPlatform supplies the macOS half of the per-platform dispatch. See the
+// note on detectPlatform in detect_windows.go for why this is chosen at compile
+// time rather than by switching on runtime.GOOS.
+func (d *Detector) detectPlatform() []Editor { return DetectDarwin() }

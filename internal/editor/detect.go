@@ -47,17 +47,12 @@ func (d *Detector) Invalidate() {
 	d.cache = nil
 }
 
-// detectPlatform dispatches to the platform-specific implementation.
-func (d *Detector) detectPlatform() []Editor {
-	switch runtime.GOOS {
-	case "windows":
-		return DetectWindows()
-	case "darwin":
-		return DetectDarwin()
-	default:
-		return DetectUnix()
-	}
-}
+// detectPlatform is deliberately not defined here. A switch on runtime.GOOS
+// would look equivalent, but it only chooses a branch at run time: the Go
+// compiler still has to resolve every branch's symbols, so calling
+// DetectWindows from it fails on any platform where the Windows file is
+// excluded by its build constraint. The three platform files each define
+// detectPlatform instead, so exactly one is compiled.
 
 // isExecutableInPath checks if an executable exists in PATH.
 func isExecutableInPath(name string) (string, bool) {
@@ -135,34 +130,6 @@ func buildVSCodeEditor(codePath string) Editor {
 		Terminal:    false,
 		TerminalCmd: nil,
 		Extensions:  []string{},
-		Source:      "detected",
-	}
-}
-
-// buildNotepadppEditor creates the Notepad++ editor entry.
-func buildNotepadppEditor(nppPath string) Editor {
-	return Editor{
-		ID:          "notepadpp",
-		Name:        "Notepad++",
-		Executable:  nppPath,
-		Args:        []string{},
-		Terminal:    false,
-		TerminalCmd: nil,
-		Extensions:  []string{},
-		Source:      "detected",
-	}
-}
-
-// buildPSISEEditor creates the PowerShell ISE editor entry.
-func buildPSISEEditor(isePath string) Editor {
-	return Editor{
-		ID:          "psise",
-		Name:        "PowerShell ISE",
-		Executable:  isePath,
-		Args:        []string{},
-		Terminal:    false,
-		TerminalCmd: nil,
-		Extensions:  []string{".ps1", ".psm1", ".psd1", ".pssc"},
 		Source:      "detected",
 	}
 }

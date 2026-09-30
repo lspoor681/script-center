@@ -134,6 +134,26 @@ current plan of record.
       `wails` and `golangci-lint` on PATH only, so they failed on the machines
       that had just run `make tools`, because `go install` writes to GOBIN. The
       Makefile already computed GOBIN_DIR to explain why and then never used it.
+- [x] **Open with... / Editor preferences.** Right-click a script → "Open ▸" to
+      open in a preferred editor (Neovim, VS Code, Notepad++, PowerShell ISE,
+      system default). Neovim launches in a new terminal window (Windows Terminal,
+      pwsh, cmd; gnome-terminal, konsole, etc. on Linux; Terminal/iTerm on macOS).
+      Preferences persist per extension: workspace override → global config →
+      Neovim if on PATH → OS default. A button in the run bar opens with the
+      preferred editor in one click. Global config stored as TOML for future GUI
+      settings window. Context menu supports both hover and click for submenus.
+- [x] **Editor detection build tags.** `internal/editor` picked its platform with
+      a `switch runtime.GOOS` in the shared file while naming all three platform
+      routines. Go constrains a file by its filename, so `_windows.go` is excluded
+      off Windows, and the compiler resolves every branch of a runtime switch even
+      though only one runs: Linux and macOS failed with `undefined:
+      DetectWindows`. It built on Windows, where the file is present. Each
+      platform file now carries an explicit `//go:build` constraint and defines
+      the dispatch itself, and the two builders only Windows uses moved into the
+      Windows file because a shared home left them unused elsewhere. The package
+      also gained its first tests, which reach the platform routine through three
+      build-tagged files rather than a runtime switch, since a single test doing
+      that would not build on Linux either.
 
 ## Backlog
 
@@ -142,14 +162,6 @@ current plan of record.
       in `internal/params` plus a fill-in form in the run panel. Once it ships,
       the free-text argument box and the run input box are retired in its favour.
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
-- [ ] **Open with... / Editor preferences.** Right-click a script → "Open ▸" to
-      open in a preferred editor (Neovim, VS Code, Notepad++, PowerShell ISE,
-      system default). Neovim launches in a new terminal window (Windows Terminal,
-      pwsh, cmd; gnome-terminal, konsole, etc. on Linux; Terminal/iTerm on macOS).
-      Preferences persist per extension: workspace override → global config →
-      Neovim if on PATH → OS default. A button in the run bar opens with the
-      preferred editor in one click. Global config stored as TOML for future GUI
-      settings window. Context menu supports both hover and click for submenus.
 - [ ] **Complex filter system.** A composable filter bar above the script list
       that combines free-text search with facet chips (language, has-params,
       modified, favorited, path prefix). Each facet adds a token; tokens can be

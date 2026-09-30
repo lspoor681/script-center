@@ -1,3 +1,5 @@
+//go:build !windows && !darwin
+
 package editor
 
 import (
@@ -5,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+// DetectUnix returns the editors installed on Linux and the other unixes,
+// ending with the system default so the list is never empty.
 func DetectUnix() []Editor {
 	var editors []Editor
 
@@ -135,3 +139,8 @@ func DetectUnix() []Editor {
 
 	return editors
 }
+
+// detectPlatform supplies the unix half of the per-platform dispatch. See the
+// note on detectPlatform in detect_windows.go for why this is chosen at compile
+// time rather than by switching on runtime.GOOS.
+func (d *Detector) detectPlatform() []Editor { return DetectUnix() }

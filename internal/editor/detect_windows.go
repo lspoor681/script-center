@@ -1,3 +1,5 @@
+//go:build windows
+
 package editor
 
 import (
@@ -5,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+// DetectWindows returns the editors installed on Windows, ending with the
+// system default so the list is never empty.
 func DetectWindows() []Editor {
 	var editors []Editor
 
@@ -101,4 +105,42 @@ func hasEditor(editors []Editor, id string) bool {
 		}
 	}
 	return false
+}
+
+// detectPlatform supplies the Windows half of the per-platform dispatch. The
+// caller cannot choose it at runtime: a switch on runtime.GOOS would still need
+// every branch's symbols to compile everywhere, and this file is excluded by
+// its own build constraint off Windows. Exactly one of these three definitions
+// is therefore compiled per platform, and detect.go carries no dispatcher.
+func (d *Detector) detectPlatform() []Editor { return DetectWindows() }
+
+// buildNotepadppEditor creates the Notepad++ editor entry. It lives here
+// rather than in detect.go because Notepad++ is only ever detected here, so a
+// shared home would leave it unused on every other platform.
+func buildNotepadppEditor(nppPath string) Editor {
+	return Editor{
+		ID:          "notepadpp",
+		Name:        "Notepad++",
+		Executable:  nppPath,
+		Args:        []string{},
+		Terminal:    false,
+		TerminalCmd: nil,
+		Extensions:  []string{},
+		Source:      "detected",
+	}
+}
+
+// buildPSISEEditor creates the PowerShell ISE editor entry. It lives here for
+// the same reason as buildNotepadppEditor: PowerShell ISE is a Windows shell.
+func buildPSISEEditor(isePath string) Editor {
+	return Editor{
+		ID:          "psise",
+		Name:        "PowerShell ISE",
+		Executable:  isePath,
+		Args:        []string{},
+		Terminal:    false,
+		TerminalCmd: nil,
+		Extensions:  []string{".ps1", ".psm1", ".psd1", ".pssc"},
+		Source:      "detected",
+	}
 }

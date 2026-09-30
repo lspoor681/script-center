@@ -89,6 +89,21 @@ checked off or retired in the TODO at the end of each session.
 
 ### Fixed
 
+- **The application would not build on Linux or macOS.** The editor detection
+  added for "Open with…" chose its platform with a `switch runtime.GOOS` in the
+  shared file, but that file also named all three platform routines. Go derives a
+  build constraint from a filename, so `_windows.go` is excluded off Windows —
+  and the compiler still has to resolve every branch of the switch even though it
+  only runs one, so the Linux build stopped at `undefined: DetectWindows`. It
+  compiled and ran on Windows, which is where the feature was written and tested.
+  The three platform files now carry explicit `//go:build` constraints and each
+  defines the dispatch itself, so exactly one is compiled per platform and the
+  shared file names none of them. The two builders only Windows uses moved into
+  the Windows file with it, since a shared home left them unused everywhere else,
+  and a first test package covers the package that had none. The constraint that
+  a platform file must not be referenced from the shared one is why the test
+  expects its routine through three build-tagged files as well: a single test
+  that switched on `runtime.GOOS` would not have built on Linux either.
 - **`make lint` and `make build` could not find the tools they had installed.**
   The Makefile computed `GOBIN_DIR` and then never referenced it, so it looked
   for `wails` and `golangci-lint` on PATH alone. `go install` writes to GOBIN,
