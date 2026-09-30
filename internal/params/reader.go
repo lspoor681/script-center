@@ -305,7 +305,7 @@ func (r *Reader) Read(ctx context.Context, scripts []Script) ([]Report, error) {
 			// A language whose toolchain is missing must not cost the other
 			// languages their forms.
 			for _, path := range paths {
-				report := Report{Path: path, Help: Help{Source: HelpSourceNone}}
+				report := Report{Path: path, Help: Help{Source: HelpSourceNone}, ReadFailed: true}
 				report.AddWarning("%s", err)
 				byPath[path] = report
 			}
@@ -317,11 +317,14 @@ func (r *Reader) Read(ctx context.Context, scripts []Script) ([]Report, error) {
 	}
 
 	// Whatever was read is remembered against the file state it was read from, so
-	// that reopening the workspace does not pay for it again.
+	// that reopening the workspace does not pay for it again. A report that
+	// records a failed read is left out: it describes a missing toolchain rather
+	// than the script, and the entry would be keyed by a file that never
+	// changed, so the missing parameters would outlive the reason for them.
 	if r.Cache != nil {
 		for _, script := range scripts {
 			report, ok := byPath[script.Path]
-			if !ok {
+			if !ok || !report.Cacheable() {
 				continue
 			}
 			r.Cache.Store(script.Path, script.Size, script.ModTime, string(languageOf(script)), report)

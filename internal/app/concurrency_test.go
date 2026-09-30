@@ -352,3 +352,54 @@ func TestConcurrentGitRefreshesDoNotRace(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestConcurrentStopAndExitDoNotRace covers the window in which the run panel's
+// Stop button and the script's own ending meet. Stop records that the user asked
+// for the run to end so the exit event can say so, and that record used to be
+// read after the runner's lock had been released rather than inside it, leaving
+// the write in Stop and the read in the exit path with nothing ordering them.
+//
+// It is worth being precise about how much this test can actually prove. The
+// reachable interleavings come out ordered in practice: Stop finds its entry by
+// looking it up in the map, and the exit path deletes that same entry under the
+// same lock immediately before reading it, so a Stop that finds nothing left to
+// write to has nothing to race with. The unsynchronized access is still a
+// violation of the memory model, and it is reachable when Stop has already
+// taken its reference and is between its two critical sections, but no amount
+// of repetition here forces that interleaving and this test was observed not to
+// report the old code. What it does give is repeated coverage of the overlap
+// under -race, which is what would catch a future change that drops the locking
+// altogether.
+func TestConcurrentStopAndExitDoNotRace(t *testing.T) {
+	for i := 0; i < 40; i++ {
+		runner := NewRunner()
+		events := &runEvents{}
+		runner.SetEmitter(events.emit)
+
+		// A run that ends on its own immediately, so Stop lands in the same
+		// window as the exit rather than after it.
+		id, err := runner.Start(quickArgv(), t.TempDir())
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Losing the race is legitimate: the run may already have ended and
+			// taken its id with it.
+			_ = runner.Stop(id)
+		}()
+
+		awaitTrue(t, func() bool {
+			_, ok := events.exit()
+			return ok
+		})
+		wg.Wait()
+
+		if err := runner.Stop(id); err == nil {
+			t.Errorf("iteration %d: Stop on a finished run returned nil, want ErrNoRun", i)
+		}
+	}
+}

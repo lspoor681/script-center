@@ -228,16 +228,17 @@ func (r *Runner) pump(session runSession, id string) {
 	}
 
 	code := session.Wait()
+	// stopped is read while the lock is still held. Stop writes it under the
+	// same lock, so reading it after unlocking leaves the two accesses with no
+	// ordering between them, which is a data race on a field the exit event
+	// reports.
 	r.mu.Lock()
 	entry, ok := r.sessions[id]
 	delete(r.sessions, id)
+	stopped := ok && entry.stopped
 	r.mu.Unlock()
-	if !ok {
-		// The exit event still needs an answer even if the entry is gone.
-		entry = &run{}
-	}
 	_ = session.Close()
-	r.emitEvent("run:exit", RunExit{ID: id, Code: code, Stopped: entry.stopped})
+	r.emitEvent("run:exit", RunExit{ID: id, Code: code, Stopped: stopped})
 }
 
 // pumpBlind waits for a run that cannot be streamed, reporting only its exit

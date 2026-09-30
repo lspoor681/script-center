@@ -167,7 +167,11 @@ func readRoot(ctx context.Context) string {
 //
 // Both loads are best-effort. An absent workspace or cache is the normal first
 // run, and a corrupt one is recoverable by reading the scripts again, so neither
-// is worth refusing to open the window over.
+// is worth refusing to open the window over. Recoverable is not the same as
+// silent, though: a saved state file that cannot be read means the user's roots
+// and stars are gone until they add them again, so that is reported the same way
+// a cache that could not be read is. Without it a corrupt file is
+// indistinguishable from a first run.
 func (s *Service) Start() error {
 	s.mu.Lock()
 	loaded, err := s.store.Load()
@@ -175,6 +179,9 @@ func (s *Service) Start() error {
 		s.ws = loaded
 	}
 	s.mu.Unlock()
+	if err != nil {
+		s.addStartupWarning(fmt.Sprintf("the saved workspace was not read and its roots will need to be added again: %v", err))
+	}
 
 	if err := s.cache.Load(); err != nil && !errors.Is(err, params.ErrNoCache) {
 		// A cache that cannot be read is a slower open, not a broken one, so it

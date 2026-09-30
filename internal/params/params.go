@@ -344,7 +344,27 @@ type Report struct {
 	// recovered from the raw file by internal/docs, so callers should consult
 	// it before showing Help as the script's own words.
 	UnparsedHelpBlock bool `json:"unparsedHelpBlock,omitempty"`
+
+	// ReadFailed marks a report that describes the absence of a read rather
+	// than the script: the reader could not run at all, usually because the
+	// language's toolchain was not installed when it tried. Such a report says
+	// nothing about the script, so the cache must not keep it. Caching one
+	// turns a temporary missing toolchain into a permanent "this script has no
+	// parameters", because the entry is keyed by the file's size and mtime and
+	// would only be re-read if the file itself changed.
+	//
+	// It is a field rather than an inference from Source and Warnings because
+	// those two cannot tell a script that genuinely has no help and no
+	// parameters from one that was never read, and only the first of those
+	// should be cached. It is not serialized: it is a property of this read,
+	// and a stored report is by definition one that was read successfully.
+	ReadFailed bool `json:"-"`
 }
+
+// Cacheable reports whether this report may be remembered against the file it
+// was read from. Only a read that actually happened says anything about the
+// script, so a failed one is always re-read next time.
+func (r Report) Cacheable() bool { return !r.ReadFailed }
 
 // HasWarnings reports whether any problem was recorded.
 func (r Report) HasWarnings() bool { return len(r.Warnings) > 0 }

@@ -89,6 +89,45 @@ checked off or retired in the TODO at the end of each session.
 
 ### Fixed
 
+- **Losing every saved root was silent.** `Start` reported a parameter cache it
+  could not read, but discarded the error from the workspace file without a
+  word. A `workspaces.json` that was corrupt, unreadable or written by a newer
+  build therefore looked exactly like a first run: the window opened empty and
+  the user was given no reason to think their roots and stars still existed. It
+  is now reported through the same startup-warning path as the cache. A missing
+  file still says nothing, because a first run is not a problem.
+- **The test that covered the above was not covering it.** It wrote its corrupt
+  fixture as `workspace.json`, while the store reads `workspaces.json`, so the
+  garbage was never loaded and the assertions passed against an empty config
+  directory without ever reaching the corrupt path they describe. The fixture
+  now uses the store's own file name, and it asserts that a warning was
+  produced, which is the only thing a genuinely unreadable file can do. A
+  companion test checks that an absent file produces no warning, so the pair
+  cannot drift back.
+- **A missing toolchain could become a permanent answer.** When a language's
+  reader could not run, the report saying so was cached against the script's
+  size and mtime like any other. Installing the toolchain afterwards then
+  changed nothing, because nothing invalidated the entry and the file itself had
+  not changed: the script showed no parameters until it was edited. Reports now
+  carry a `ReadFailed` marker that keeps them out of the cache, and a script
+  that was really read and genuinely has no parameters is still cached, which is
+  the case caching exists for.
+- **The run panel's exit reason was read outside the lock.** `Stop` records that
+  the user asked for a run to end under the runner's mutex, but the exit path
+  read that flag after releasing it, leaving the two accesses unordered. It is
+  now read inside the critical section. Worth being precise about: no test can
+  force the interleaving, because `Stop` finds its entry by looking it up in the
+  map and the exit path deletes that entry under the same lock immediately
+  before reading it, so the reachable orderings come out ordered in practice.
+  The change removes a violation of the memory model rather than fixing an
+  observed wrong value.
+- **A test covering blind runs was failing about one run in many, for the wrong
+  reason.** `TestRunnerBlindNotStoppable` starts a fake blind run whose `Wait`
+  returns immediately, so the exit path could delete the run before `Stop` and
+  `SendInput` were called, and both then reported "not active" instead of the
+  refusal the test is about. It passed nearly every time and failed now and then,
+  which made it look like whatever else had just changed was at fault. The run
+  is now held open for the duration of the test.
 - **The Windows build was red about half the time, for no reason.** The test
   that covers canceling a run asserted that the child's *exit code* was
   non-zero after the session was closed, and on Windows that code is not a

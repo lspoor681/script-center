@@ -17,6 +17,7 @@ import (
 	"github.com/lspoor/script-center/internal/detect"
 	"github.com/lspoor/script-center/internal/params"
 	"github.com/lspoor/script-center/internal/scan"
+	"github.com/lspoor/script-center/internal/workspace"
 )
 
 // newTestService returns a Service whose state lives in a temporary directory, so
@@ -588,8 +589,16 @@ func TestStatusDescribesWhatWasLoaded(t *testing.T) {
 func TestStartSurvivesACorruptWorkspace(t *testing.T) {
 	// A corrupt state file should cost the user their saved roots, not the
 	// ability to open the application at all.
+	//
+	// The fixture is written under the store's own file name. It used to be
+	// written as workspace.json, which is not the name the store reads, so the
+	// garbage was never loaded and the assertions below passed against a
+	// brand-new empty config directory without ever exercising the corrupt
+	// path they are about. The warning assertion is what stops that from
+	// happening again: only a file the store actually tried to read and failed
+	// on produces one.
 	config := t.TempDir()
-	storePath := filepath.Join(config, "workspace.json")
+	storePath := filepath.Join(config, workspace.FileName)
 	if err := os.WriteFile(storePath, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -600,9 +609,29 @@ func TestStartSurvivesACorruptWorkspace(t *testing.T) {
 	if len(service.Workspace().Roots) != 0 {
 		t.Error("a corrupt workspace should read as empty")
 	}
+	// The user has lost their saved roots, so they are told rather than shown an
+	// empty window that looks like a first run.
+	warnings := service.startupWarnings()
+	if len(warnings) == 0 {
+		t.Error("a corrupt workspace produced no startup warning, so losing every root is silent")
+	}
 	// And the app is still usable.
 	if _, err := service.AddRoot(scriptTree(t), ""); err != nil {
 		t.Errorf("adding a root after a corrupt load: %v", err)
+	}
+}
+
+// TestStartOnAnAbsentWorkspaceIsNotAWarning is the other half of that pair. A
+// first run has no state file at all and is the normal case, so the warning
+// added for a corrupt one must not fire here or every new user opens the
+// application to a complaint.
+func TestStartOnAnAbsentWorkspaceIsNotAWarning(t *testing.T) {
+	service := New(t.TempDir())
+	if err := service.Start(); err != nil {
+		t.Fatalf("Start() = %v, want nil", err)
+	}
+	if warnings := service.startupWarnings(); len(warnings) != 0 {
+		t.Errorf("a first run reported %v, want no warning about a file that was never there", warnings)
 	}
 }
 

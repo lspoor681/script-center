@@ -288,6 +288,15 @@ func longLivingArgv() []string {
 	return []string{"/bin/sh", "-c", "while :; do sleep 1; done"}
 }
 
+// quickArgv runs a command that ends almost at once, for tests that want Stop to
+// land in the same window as the run's own ending rather than well before it.
+func quickArgv() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"cmd.exe", "/C", "echo quick"}
+	}
+	return []string{"/bin/sh", "-c", "echo quick"}
+}
+
 func TestRunnerStreamsOutputAndExits(t *testing.T) {
 	runner := NewRunner()
 	events := &runEvents{}
@@ -574,6 +583,25 @@ type blindFake struct {
 func (b *blindFake) Wait() int    { return b.code }
 func (b *blindFake) Close() error { return nil }
 
+// blindHolding is a blindProc that stays alive until it is released, for the
+// tests that need the run to still be active when they act on it. blindFake is
+// the opposite on purpose: its Wait returns at once, which is what a test
+// wanting an exit code needs.
+type blindHolding struct {
+	done chan struct{}
+	once sync.Once
+}
+
+func (b *blindHolding) Wait() int { <-b.done; return 0 }
+func (b *blindHolding) Close() error {
+	b.release()
+	return nil
+}
+
+// release lets the run finish. It is safe to call more than once, because both
+// the cleanup and Close may reach it.
+func (b *blindHolding) release() { b.once.Do(func() { close(b.done) }) }
+
 type runSessionFake struct{}
 
 func (runSessionFake) Read([]byte) (int, error)    { return 0, io.EOF }
@@ -640,9 +668,19 @@ func TestRunScriptElevatedInOwnWindow(t *testing.T) {
 // TestRunnerBlindNotStoppable checks that the runner itself refuses to stop a
 // run whose window it cannot reach, which is what keeps the panel honest
 // about a blind run.
+//
+// The run is held open rather than allowed to end. blindFake returns from Wait
+// immediately, so the exit path could delete the run between StartBlind and the
+// calls below, and then both of them would fail with ErrNoRun instead, which is
+// a different refusal and no evidence about blind runs at all. That race is
+// narrow enough to pass almost every time and lose one, which is exactly the
+// kind of failure that gets blamed on whatever else changed at the time.
 func TestRunnerBlindNotStoppable(t *testing.T) {
 	runner := NewRunner()
-	id, err := runner.StartBlind(&blindFake{code: 0})
+	blind := &blindHolding{done: make(chan struct{})}
+	t.Cleanup(blind.release)
+
+	id, err := runner.StartBlind(blind)
 	if err != nil {
 		t.Fatalf("StartBlind: %v", err)
 	}

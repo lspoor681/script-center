@@ -540,3 +540,77 @@ func TestConcurrentReadsDoNotRace(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestReaderDoesNotCacheAFailedRead covers a missing toolchain turning into a
+// permanent answer about the script. The report for a language whose reader
+// could not run says nothing about the script itself, but the cache is keyed by
+// the file's size and mtime, so storing one pins "no parameters" to a file that
+// is not going to change. Installing the toolchain would then make no
+// difference until the user edited the script.
+func TestReaderDoesNotCacheAFailedRead(t *testing.T) {
+	dir := t.TempDir()
+	path, size, modTime := writeScript(t, dir, "rebuild.ps1", "param([string]$Server)\n", time.Unix(1700000000, 0))
+	if err := os.Chtimes(path, modTime, modTime); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := NewCache("")
+	script := Script{Path: path, Language: detect.PowerShell, Size: size, ModTime: modTime}
+
+	// First read: PowerShell is not installed.
+	missing := &Reader{
+		lookup: func(detect.Language) (string, error) { return "", ErrNoPowerShell },
+		Cache:  cache,
+	}
+	reports, err := missing.Read(context.Background(), []Script{script})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(reports[0].Warnings) == 0 {
+		t.Fatal("a read with no toolchain should carry a warning")
+	}
+	if reports[0].Cacheable() {
+		t.Error("a report describing a failed read was marked cacheable")
+	}
+	if cache.Len() != 0 {
+		t.Fatalf("cache holds %d reports after a failed read, want 0", cache.Len())
+	}
+
+	// Second read, same unchanged file, PowerShell now available. The form must
+	// appear, which it only can if nothing was remembered the first time.
+	available := NewReader(Options{})
+	available.Cache = cache
+	reports, err = available.Read(context.Background(), []Script{script})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if reports[0].HasWarnings() {
+		t.Errorf("the second read still failed: %v", reports[0].Warnings)
+	}
+	if len(reports[0].Params) != 1 || reports[0].Params[0].Name != "Server" {
+		t.Errorf("params = %+v, want Server", reports[0].Params)
+	}
+}
+
+// TestReaderCachesAScriptThatGenuinelyHasNoParameters is the other half of that
+// pair. A script that was really read and really has nothing is the case caching
+// exists for, so the fix must not have thrown it away along with the failures.
+func TestReaderCachesAScriptThatGenuinelyHasNoParameters(t *testing.T) {
+	dir := t.TempDir()
+	path, size, modTime := writeScript(t, dir, "plain.sh", "#!/bin/bash\necho hello\n", time.Unix(1700000000, 0))
+	if err := os.Chtimes(path, modTime, modTime); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := NewCache("")
+	reader := NewReader(Options{})
+	reader.Cache = cache
+	script := Script{Path: path, Language: detect.Bash, Size: size, ModTime: modTime}
+
+	if _, err := reader.Read(context.Background(), []Script{script}); err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if _, ok := cache.Lookup(path, size, modTime, "bash"); !ok {
+		t.Error("a script read successfully was not cached, so every open pays for it again")
+	}
+}
