@@ -211,10 +211,13 @@ current plan of record.
       problem, and the delay is what lets a script clean up after itself, so
       shortening it is a judgement call rather than a bug fix. It needs a
       `CloseConfig` passthrough on `internal/pty.Config` to be tunable at all.
-- [ ] **Form-driven arguments.** Build the command line from the harvested
-      parameter form instead of free-text extra arguments. Needs an argv builder
-      in `internal/params` plus a fill-in form in the run panel. Once it ships,
-      the free-text argument box and the run input box are retired in its favour.
+- [x] **Form-driven arguments.** Dynamic parameter form in the run panel builds
+      the command line from harvested metadata (PowerShell, Python, Bash). Each
+      parameter kind maps to an appropriate input: text, number, checkbox, select,
+      multi-value array, file-path with browse button, password (omitted from argv,
+      script prompts in terminal). Repopulate button fills form from last run.
+      Free-text "Advanced: Raw arguments" retained as escape hatch; run input
+      retained for interactive prompts (sudo passwords).
 - [ ] **Multiple concurrent runs.** Today the runner allows one active run.
 - [ ] **Complex filter system.** A composable filter bar above the script list
       that combines free-text search with facet chips (language, has-params,
