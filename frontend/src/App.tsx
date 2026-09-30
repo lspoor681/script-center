@@ -99,6 +99,7 @@ function App() {
     const [extraArgs, setExtraArgs] = useState('');
     const [formValues, setFormValues] = useState<Record<string, any>>({});
     const [formExpanded, setFormExpanded] = useState(true);
+    const [lastRunFormValues, setLastRunFormValues] = useState<Record<string, any> | null>(null);
     // Requests the run start with administrator privileges, as the run bar's
     // checkbox. A script whose metadata demands elevation is checked and
     // locked regardless of what a user picks.
@@ -338,6 +339,7 @@ function App() {
         setDoc(null);
         setDocPath('');
         setFormValues({});
+        setLastRunFormValues(null);
         setFormExpanded(true);
         // Explaining is a second read of the same script, and clicking through a
         // list fires one per click, so two are in flight whenever the user moves
@@ -636,6 +638,8 @@ function App() {
             if (hasFormValues) {
                 const built = await api.buildArgv(script.root, script.rel, formValues);
                 argv = built;
+                // Save form values for repopulate feature
+                setLastRunFormValues({...formValues});
             } else {
                 argv = splitArgs(extra);
             }
@@ -680,6 +684,24 @@ function App() {
                 : null));
         }
     }, [applyRunExit, applyRunOutput, formValues]);
+
+    const handleBrowse = useCallback(async (paramName: string) => {
+        try {
+            const path = await api.openFileDialog(`Select path for ${paramName}`);
+            if (path) {
+                setFormValues((prev) => ({...prev, [paramName]: path}));
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            setError(`opening file dialog: ${message}`);
+        }
+    }, []);
+
+    const repopulateForm = useCallback(() => {
+        if (lastRunFormValues) {
+            setFormValues({...lastRunFormValues});
+        }
+    }, [lastRunFormValues]);
 
     // A line typed into the run panel is written to the script's input, which
     // answers prompts such as the one sudo shows for a password. A blind run
@@ -1178,6 +1200,9 @@ function App() {
                                     onChange={setFormValues}
                                     expanded={formExpanded}
                                     onToggleExpand={setFormExpanded}
+                                    onBrowse={handleBrowse}
+                                    lastRunValues={lastRunFormValues}
+                                    onRepopulate={repopulateForm}
                                 />
                                 <details className="advanced-toggle">
                                     <summary>Advanced: Raw arguments</summary>

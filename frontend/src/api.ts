@@ -17,6 +17,7 @@ import {
     GetPreferredEditor as getPreferredEditorBinding,
     Invalidate as invalidateBinding,
     OpenFile as openFileBinding,
+    OpenFileDialog as openFileDialogBinding,
     OpenRoot as openRootBinding,
     RefreshGit as refreshGitBinding,
     RemoveRoot as removeRootBinding,
@@ -137,6 +138,10 @@ export function toolchains(): Promise<Toolchain[]> {
 
 export function openFile(path: string, editorId: string): Promise<void> {
     return openFileBinding(path, editorId);
+}
+
+export function openFileDialog(title: string): Promise<string> {
+    return wire<Promise<string>>(openFileDialogBinding(title));
 }
 
 export function detectEditors(): Promise<Editor[]> {

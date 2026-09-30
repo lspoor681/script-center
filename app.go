@@ -196,6 +196,16 @@ func (a *App) ChooseRoot() (any, error) {
 	return a.service.AddRoot(path, "")
 }
 
+// OpenFileDialog asks the user to select a file or directory.
+// It returns the selected path, or an empty string if the user canceled.
+func (a *App) OpenFileDialog(title string) (string, error) {
+	path, err := openFileDialog(a.ctxOrBackground(), title)
+	if err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // openDirectoryDialog asks for a directory.
 //
 // The dialog is a runtime service, so it is reached through a small indirection
@@ -203,6 +213,16 @@ func (a *App) ChooseRoot() (any, error) {
 // package be tested without a window, and the window is the only thing that can
 // know where to put the dialog.
 var openDirectoryDialog = func(context.Context) (string, error) {
+	return "", errNoDialog
+}
+
+// openFileDialog asks for a file or directory.
+//
+// The dialog is a runtime service, so it is reached through a small indirection
+// that main can fill in. Keeping it out of the service package is what lets that
+// package be tested without a window, and the window is the only thing that can
+// know where to put the dialog.
+var openFileDialog = func(context.Context, string) (string, error) {
 	return "", errNoDialog
 }
 

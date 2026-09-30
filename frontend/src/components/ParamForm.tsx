@@ -8,6 +8,9 @@ interface ParamFormProps {
   initialValues?: Record<string, any>;
   expanded?: boolean;
   onToggleExpand?: (expanded: boolean) => void;
+  onBrowse?: (paramName: string) => Promise<void>;
+  lastRunValues?: Record<string, any> | null;
+  onRepopulate?: () => void;
 }
 
 export function ParamForm({
@@ -16,6 +19,9 @@ export function ParamForm({
   initialValues = {},
   expanded = true,
   onToggleExpand,
+  onBrowse,
+  lastRunValues,
+  onRepopulate,
 }: ParamFormProps) {
   const [values, setValues] = useState<Record<string, any>>(initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -236,9 +242,16 @@ export function ParamForm({
                 placeholder={defaultValue ? `Default: ${defaultValue}` : ''}
                 onChange={(e) => handleChange(param.name, e.target.value)}
               />
-              <button type="button" className="browse-btn" title="Browse">
-                📁
-              </button>
+              {onBrowse && (
+                <button
+                  type="button"
+                  className="browse-btn"
+                  title="Browse"
+                  onClick={() => onBrowse(param.name)}
+                >
+                  📁
+                </button>
+              )}
             </div>
             {helpText && <div className="param-help">{helpText}</div>}
             {error && <div className="param-error">{error}</div>}
@@ -301,7 +314,14 @@ export function ParamForm({
           onClick={() => onToggleExpand(!expanded)}
           aria-expanded={expanded}
         >
-          {expanded ? '▼' : '▶'} Parameters ({params.length})
+          <span>{expanded ? '▼' : '▶'} Parameters ({params.length})</span>
+          <span className="toggle-actions">
+            {lastRunValues && onRepopulate && (
+              <button type="button" className="repopulate-btn" onClick={onRepopulate} title="Fill from last run">
+                ↺ Repopulate
+              </button>
+            )}
+          </span>
         </button>
       )}
 

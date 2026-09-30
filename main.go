@@ -45,6 +45,15 @@ func run() error {
 		})
 	}
 
+	openFileDialog = func(ctx context.Context, title string) (string, error) {
+		return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+			Title: title,
+			Filters: []runtime.FileFilter{
+				{DisplayName: "All Files", Pattern: "*"},
+			},
+		})
+	}
+
 	return wails.Run(&options.App{
 		Title:     "Script Center",
 		Width:     1280,

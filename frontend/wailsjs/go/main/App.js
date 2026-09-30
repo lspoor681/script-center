@@ -42,6 +42,10 @@ export function OpenFile(arg1, arg2) {
   return window['go']['main']['App']['OpenFile'](arg1, arg2);
 }
 
+export function OpenFileDialog(arg1) {
+  return window['go']['main']['App']['OpenFileDialog'](arg1);
+}
+
 export function OpenRoot(arg1) {
   return window['go']['main']['App']['OpenRoot'](arg1);
 }

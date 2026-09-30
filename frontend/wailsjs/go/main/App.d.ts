@@ -22,6 +22,8 @@ export function Invalidate(arg1:string,arg2:string):Promise<app.ScriptView>;
 
 export function OpenFile(arg1:string,arg2:string):Promise<void>;
 
+export function OpenFileDialog(arg1:string):Promise<string>;
+
 export function OpenRoot(arg1:string):Promise<app.RootView>;
 
 export function RefreshGit(arg1:string):Promise<app.GitRefresh>;
