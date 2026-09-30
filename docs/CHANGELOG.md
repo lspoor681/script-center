@@ -90,10 +90,25 @@ checked off or retired in the TODO at the end of each session.
   every behaviour here was covered by building the app and looking at it. The
   components reach the backend through one module and the window through the
   generated Wails runtime, and both are now replaceable under jsdom, which is
-  what makes a window test possible at all. `npm test` in `frontend` runs them.
+  what makes a window test possible at all. The runtime mock is a small
+  push-capable event bus rather than a pair of no-op functions, so a test can
+  deliver an event at the moment it would really arrive. `npm test` in
+  `frontend` runs them.
 
 ### Fixed
 
+- **A fast script could leave the run panel stuck on "running" forever.** A run's
+  output and its exit are pushed by the backend, which starts reading the moment
+  it has registered the run and only then answers the call that returns the id.
+  For a script that prints something and exits quickly, both events arrive before
+  the window has an id to match them against, and the guard that ignores events
+  from other runs dropped them. The panel then said the script was running with
+  an empty output block and a disabled Run button, for a script that had already
+  finished. Events arriving while the start call is still in flight are now kept
+  and replayed once the id arrives. The distinction being drawn is "not known
+  yet" against "belongs to another run": the buffer is opened for the duration of
+  one start call, so a genuinely late event from a finished run is still
+  ignored.
 - **Clicking quickly through roots could paint the wrong folder's scripts.** A
   root read cannot be cancelled from the frontend, so selecting a second root
   leaves the first in flight, and a folder on a slow disk or a network share can

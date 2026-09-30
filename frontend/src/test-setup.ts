@@ -43,8 +43,31 @@ vi.mock('./api', () => ({
 // and there is no window event bus under jsdom, so the generated runtime is
 // replaced too. EventsOn hands back an unsubscribe function, which the component
 // calls on cleanup, so the mock has to as well.
+//
+// The real bus is push, and a test needs to be able to push. `fire` delivers an
+// event to everything currently subscribed, which is how a run that starts and
+// finishes inside one tick is expressed.
+// The registry hangs off globalThis rather than off a module binding because a
+// vi.mock factory is hoisted above the file's own imports, and ./test-helpers
+// (which is what exports fire to tests) is imported by a test file that the
+// setup file never sees. A setup file cannot export to a test file, so this is
+// the one piece of shared state that has to be reachable from both sides.
+const REGISTRY = '__scriptCenterEventBus';
+
 vi.mock('../wailsjs/runtime/runtime', () => ({
-    EventsOn: vi.fn(() => vi.fn()),
+    EventsOn: vi.fn((name: string, callback: (...args: unknown[]) => void) => {
+        const bus = ((globalThis as Record<string, unknown>)[REGISTRY] ??=
+            new Map<string, Set<(...args: unknown[]) => void>>()) as Map<
+            string,
+            Set<(...args: unknown[]) => void>
+        >;
+        const set = bus.get(name) ?? new Set();
+        set.add(callback);
+        bus.set(name, set);
+        return () => {
+            set.delete(callback);
+        };
+    }),
     BrowserOpenURL: vi.fn(),
 }));
 

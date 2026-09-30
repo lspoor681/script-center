@@ -108,6 +108,20 @@ function App() {
     // and ignored: ids are unique per run, and the frontend only ever watches
     // the most recent one.
     const activeIdRef = useRef<string | null>(null);
+    // A run's events are pushed by the backend, which starts pumping the moment
+    // it has registered the run and only then answers the call that returns the
+    // id. So a script that prints something and exits quickly emits both its
+    // output and its exit before there is an id here to match them against, and
+    // the guard above would drop them, leaving a panel that says the script is
+    // running forever with an empty output block and a disabled Run button.
+    //
+    // So events arriving while a start call is still in flight are kept rather
+    // than dropped, and replayed once the id arrives. The distinction this draws
+    // is "not known yet" against "belongs to another run", which is exactly what
+    // awaitingRun records: a buffer is only opened for the duration of one
+    // start, so an event from a genuinely finished run is still ignored.
+    const awaitingRun = useRef(false);
+    const earlyRunEvents = useRef<Array<{name: string; payload: unknown}>>([]);
     // outputRef is the terminal's <pre>. New output scrolls it to the bottom,
     // so a long stream stays readable without the user dragging for it.
     const outputRef = useRef<HTMLPreElement>(null);
@@ -514,33 +528,63 @@ function App() {
     // id of the run it belongs to. A chunk is appended only while it matches
     // the active run, so events that race with the promise resolving cannot
     // smear into the wrong run.
-    const handleRunOutput = useCallback((data: unknown) => {
-        const record = data as {id?: unknown; chunk?: unknown};
-        const id = String(record?.id ?? '');
-        const chunk = String(record?.chunk ?? '');
-        if (!id || id !== activeIdRef.current) {
-            return;
-        }
+    // applyRunOutput and applyRunExit are the state changes behind the two event
+    // handlers, split out because a buffered event has to go through the same
+    // change as a live one rather than a second copy of it.
+    const applyRunOutput = useCallback((id: string, chunk: string) => {
         setRun((current) => (current && current.id === id
             ? {...current, output: current.output + stripAnsi(chunk)}
             : current));
     }, []);
 
-    const handleRunExit = useCallback((data: unknown) => {
-        const record = data as {id?: unknown; code?: unknown; stopped?: unknown};
-        const id = String(record?.id ?? '');
-        if (!id || id !== activeIdRef.current) {
-            return;
-        }
+    const applyRunExit = useCallback((id: string, code: unknown, stopped: unknown) => {
         activeIdRef.current = null;
         setRun((current) => (current && current.id === id
             ? {
                 ...current,
-                status: record?.stopped ? 'stopped' : 'done',
-                code: typeof record?.code === 'number' ? record.code : current.code,
+                status: stopped ? 'stopped' : 'done',
+                code: typeof code === 'number' ? code : current.code,
             }
             : current));
     }, []);
+
+    // rememberEarlyRunEvent keeps an event that arrived before its id was known,
+    // if a start call is still in flight. Dropping it is what leaves the panel
+    // stuck on a run that already ended.
+    const rememberEarlyRunEvent = useCallback((name: string, payload: unknown) => {
+        if (!awaitingRun.current) {
+            return false;
+        }
+        earlyRunEvents.current.push({name, payload});
+        return true;
+    }, []);
+
+    const handleRunOutput = useCallback((data: unknown) => {
+        const record = data as {id?: unknown; chunk?: unknown};
+        const id = String(record?.id ?? '');
+        const chunk = String(record?.chunk ?? '');
+        if (!id) {
+            return;
+        }
+        if (id !== activeIdRef.current) {
+            rememberEarlyRunEvent('run:output', record);
+            return;
+        }
+        applyRunOutput(id, chunk);
+    }, [applyRunOutput, rememberEarlyRunEvent]);
+
+    const handleRunExit = useCallback((data: unknown) => {
+        const record = data as {id?: unknown; code?: unknown; stopped?: unknown};
+        const id = String(record?.id ?? '');
+        if (!id) {
+            return;
+        }
+        if (id !== activeIdRef.current) {
+            rememberEarlyRunEvent('run:exit', record);
+            return;
+        }
+        applyRunExit(id, record?.code, record?.stopped);
+    }, [applyRunExit, rememberEarlyRunEvent]);
 
     // A stage is only shown when it belongs to the read the user is waiting on.
     // The read root is a ref, so this callback is stable and the subscription is
@@ -576,6 +620,10 @@ function App() {
             output: '',
             origin: {script, extra, raised},
         });
+        // The buffer is opened before the call rather than after, because the
+        // events that need it are emitted while the call is in flight.
+        awaitingRun.current = true;
+        earlyRunEvents.current = [];
         try {
             const view = await api.runScript(script.root, script.rel, splitArgs(extra), raised);
             activeIdRef.current = view.id;
@@ -590,13 +638,34 @@ function App() {
                 blind: view.blind,
                 origin: {script, extra, raised},
             });
+            // Anything that arrived before the id is now applied, in order, so a
+            // run that already finished is shown as finished rather than as
+            // still going. An event belonging to a different run is skipped: the
+            // buffer is open for one start, but ids from a previous run can still
+            // be in flight at the same moment.
+            const early = earlyRunEvents.current;
+            earlyRunEvents.current = [];
+            awaitingRun.current = false;
+            for (const {name, payload} of early) {
+                const record = payload as {id?: unknown; chunk?: unknown; code?: unknown; stopped?: unknown};
+                if (String(record?.id ?? '') !== view.id) {
+                    continue;
+                }
+                if (name === 'run:output') {
+                    applyRunOutput(view.id, String(record?.chunk ?? ''));
+                } else {
+                    applyRunExit(view.id, record?.code, record?.stopped);
+                }
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
+            awaitingRun.current = false;
+            earlyRunEvents.current = [];
             setRun((current) => (current
                 ? {...current, status: 'failed', error: message}
                 : null));
         }
-    }, []);
+    }, [applyRunExit, applyRunOutput]);
 
     // A line typed into the run panel is written to the script's input, which
     // answers prompts such as the one sudo shows for a password. A blind run

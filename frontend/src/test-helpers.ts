@@ -16,6 +16,31 @@ import type {
 
 export {api};
 
+// fire delivers an event to whatever is subscribed to that name right now, which
+// is how a run that emits before the component is watching for it is expressed.
+// The registry is the one the runtime mock in ./test-setup writes to; see the
+// comment there for why it lives on globalThis.
+function eventBus(): Map<string, Set<(...args: unknown[]) => void>> | undefined {
+    return (globalThis as Record<string, unknown>).__scriptCenterEventBus as
+        | Map<string, Set<(...args: unknown[]) => void>>
+        | undefined;
+}
+
+export function fire(name: string, payload: unknown) {
+    // Copied before iterating: a callback may unsubscribe while being called,
+    // and a live Set would skip the next one.
+    for (const callback of [...(eventBus()?.get(name) ?? [])]) {
+        callback(payload);
+    }
+}
+
+// subscribedTo lists the events the component is currently listening for, so a
+// test can wait for a subscription rather than sleeping and hoping.
+export function subscribedTo(): string[] {
+    const bus = eventBus();
+    return [...(bus?.keys() ?? [])].filter((name) => (bus?.get(name)?.size ?? 0) > 0);
+}
+
 // A promise the test resolves by hand, which is how a response that arrives
 // later than a newer one is expressed.
 export function deferred<T>() {
