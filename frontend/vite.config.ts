@@ -1,8 +1,12 @@
 import {existsSync, mkdirSync, writeFileSync} from 'node:fs'
 import {dirname, resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {defineConfig, type Plugin} from 'vite'
+import {type Plugin} from 'vite'
 import react from '@vitejs/plugin-react'
+// defineConfig comes from vitest/config rather than vite so the `test` key below
+// is typed. The build itself never reads it, but `tsc` checks this file, and it
+// re-exports everything vite's own does.
+import {defineConfig} from 'vitest/config'
 
 // The Go side embeds all:frontend/dist, and a clean checkout has nothing there
 // to embed because the build output is ignored. A zero-byte placeholder is
@@ -34,5 +38,14 @@ function embedPlaceholder(): Plugin {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), embedPlaceholder()]
+    plugins: [react(), embedPlaceholder()],
+    test: {
+        // The component talks to the window, to the context menu and to a few
+        // measurements, none of which jsdom implements.
+        environment: 'jsdom',
+        setupFiles: ['./src/test-setup.ts'],
+        // The tests import App.tsx, which is large, so the first run pays for
+        // transforming it and the rest reuse that.
+        restoreMocks: true,
+    },
 })

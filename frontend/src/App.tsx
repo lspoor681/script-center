@@ -62,6 +62,15 @@ function App() {
     // re-subscribed every time a read starts.
     const [readStage, setReadStage] = useState<types.ReadStage | null>(null);
     const readingRoot = useRef<string>('');
+    // readSeq counts directory reads so that an answer from one can be recognised
+    // as stale. A root read cannot be cancelled from the frontend, so the only
+    // lever is to notice on the way back that a newer read has since started and
+    // drop the answer instead of painting it.
+    const readSeq = useRef(0);
+    // explainSeq counts explain calls for the same reason readSeq counts root
+    // reads: an explanation cannot be cancelled, so a stale one has to be
+    // recognised on the way back rather than prevented from being sent.
+    const explainSeq = useRef(0);
     // Whether a git refresh is in flight, which makes a focus during one a
     // no-op rather than a second set of git invocations.
     const refreshingGit = useRef(false);
@@ -155,13 +164,34 @@ function App() {
     const loadRoot = useCallback(async (path: string) => {
         readingRoot.current = path;
         setReadStage(null);
+        // Selecting another root does not cancel this read, and a read of a
+        // folder on a slow disk or a network share can take seconds, so two of
+        // these are in flight whenever the user clicks quickly. The older one
+        // can easily land last, and it would paint a script list belonging to a
+        // root the user has already moved off while the sidebar shows the newer
+        // one as selected. The token is what makes the answer to that question
+        // "was this the most recent read" rather than "was this the last to
+        // arrive", and an answer that is stale is dropped instead of applied.
+        const token = ++readSeq.current;
         try {
             const next = await api.openRoot(path);
+            if (token !== readSeq.current) {
+                return;
+            }
             setView(next);
             setError('');
         } catch (err) {
+            if (token !== readSeq.current) {
+                return;
+            }
             fail('reading the root', err);
         } finally {
+            // A stale read still has to release the label and the spinner, but
+            // only if nothing newer has taken over in the meantime: otherwise
+            // this would clear the progress of the read the user is waiting for.
+            if (token !== readSeq.current) {
+                return;
+            }
             // The ref is cleared as well as the state. A stage that is still in
             // flight when the read ends would otherwise have nothing to match
             // against, leave the label showing a step that has finished, and
@@ -290,9 +320,27 @@ function App() {
         setDetail(null);
         setDoc(null);
         setDocPath('');
+        // Explaining is a second read of the same script, and clicking through a
+        // list fires one per click, so two are in flight whenever the user moves
+        // faster than the backend answers. Explaining a large script with a slow
+        // toolchain can take long enough to lose this race routinely, and the
+        // older answer landing last would put one script's documentation under
+        // another script's name. The token is what makes the answer to that
+        // question "was this the newest click" rather than "did this arrive last".
+        const token = ++explainSeq.current;
         api.explain(script.root, script.rel)
-            .then(setDetail)
-            .catch((err) => fail('opening the script', err));
+            .then((next) => {
+                if (token !== explainSeq.current) {
+                    return;
+                }
+                setDetail(next);
+            })
+            .catch((err) => {
+                if (token !== explainSeq.current) {
+                    return;
+                }
+                fail('opening the script', err);
+            });
     }, [fail]);
 
     // Reading a document is a separate call because the metadata and the prose
@@ -357,18 +405,43 @@ function App() {
         setBusy('Re-reading…');
         try {
             const fresh = await api.invalidate(script.root, script.rel);
-            setView((current) => current && {
-                ...current,
-                scripts: current.scripts.map((s) => (s.rel === fresh.rel ? fresh : s)),
-                meta: {
-                    ...current.meta,
-                    fromCache: Math.max(0, current.meta.fromCache - 1),
-                    read: current.meta.read + 1,
-                },
+            setView((current) => {
+                // Re-reading re-reads one script from disk, which for a script
+                // being parsed with a toolchain that has to start can outlast the
+                // user's interest in it. If they moved to another root in the
+                // meantime, the view being patched belongs to that root, and a
+                // match on the relative path alone would replace a script there
+                // that was never read — two folders can hold a deploy.ps1, and
+                // that is the interesting case, not an accident. Comparing the
+                // root is what makes the answer "which script" instead of "which
+                // script with this name".
+                if (!current || current.root !== fresh.root) {
+                    return current;
+                }
+                return {
+                    ...current,
+                    scripts: current.scripts.map((s) => (s.rel === fresh.rel ? fresh : s)),
+                    meta: {
+                        ...current.meta,
+                        fromCache: Math.max(0, current.meta.fromCache - 1),
+                        read: current.meta.read + 1,
+                    },
+                };
             });
-            if (picked?.rel === fresh.rel) {
+            // Same question one level up: the detail panel shows whichever script
+            // is picked, and picked is checked by root and path so that a
+            // same-named script in another folder is not mistaken for it.
+            if (picked?.root === fresh.root && picked?.rel === fresh.rel) {
                 setPicked(fresh);
-                api.explain(fresh.root, fresh.rel).then(setDetail).catch(() => undefined);
+                const token = ++explainSeq.current;
+                api.explain(fresh.root, fresh.rel)
+                    .then((next) => {
+                        if (token !== explainSeq.current) {
+                            return;
+                        }
+                        setDetail(next);
+                    })
+                    .catch(() => undefined);
             }
         } catch (err) {
             fail('re-reading the script', err);

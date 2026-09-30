@@ -85,8 +85,12 @@ test-race: ## Run the Go test suite under the race detector
 test-pty: ## Run only the pty smoke tests
 	$(GO) test -v -run 'TestPTY' ./internal/pty/
 
+.PHONY: test-frontend
+test-frontend: ## Run the frontend test suite
+	cd $(FRONTEND) && npm test
+
 .PHONY: check
-check: fmt-check vet lint test ## Run every check CI runs
+check: fmt-check vet lint test test-frontend ## Run every check CI runs
 
 ## --------------------------------------------------------------------- build
 

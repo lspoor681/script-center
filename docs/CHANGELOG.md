@@ -86,9 +86,34 @@ checked off or retired in the TODO at the end of each session.
   → Neovim if on PATH → OS default. An "Open" button in the run bar opens with
   the preferred editor in one click. Context menu submenus support both hover and
   click. Global config stored as TOML for future GUI settings window.
+- **The window has a test suite.** There was no frontend test runner at all, so
+  every behaviour here was covered by building the app and looking at it. The
+  components reach the backend through one module and the window through the
+  generated Wails runtime, and both are now replaceable under jsdom, which is
+  what makes a window test possible at all. `npm test` in `frontend` runs them.
 
 ### Fixed
 
+- **Clicking quickly through roots could paint the wrong folder's scripts.** A
+  root read cannot be cancelled from the frontend, so selecting a second root
+  leaves the first in flight, and a folder on a slow disk or a network share can
+  take seconds while a local one takes milliseconds. The older answer then lands
+  last and paints its script list while the sidebar shows the newer root as
+  selected. Reads now carry a sequence number and a stale answer is dropped
+  rather than applied.
+- **The same race could show one script's documentation under another's name.**
+  Explaining is a second read of the same file and fires once per click, so two
+  are in flight whenever the user moves faster than the backend answers, which
+  for a large script or one needing a toolchain that has to start is routine.
+  The older answer arriving last put the wrong script's documentation in the
+  panel. Explanation answers are now sequenced the same way.
+- **A re-read could put a script into a different root that shares its name.**
+  The answer identifies the script it re-read, and the panel applied it to
+  whichever root the view held at the time, matching on the relative path alone.
+  Two folders holding a `deploy.ps1` is ordinary rather than an accident, so the
+  wrong root's script was replaced with one from elsewhere and the list stopped
+  matching the folder on disk. The root is now part of the match, as it already
+  was for deciding whether the detail panel should follow.
 - **Losing every saved root was silent.** `Start` reported a parameter cache it
   could not read, but discarded the error from the workspace file without a
   word. A `workspaces.json` that was corrupt, unreadable or written by a newer
