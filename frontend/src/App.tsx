@@ -747,29 +747,28 @@ function App() {
     // Closing the context menu is a window concern, so it is handled here: any
     // click elsewhere or Escape dismisses it. The handler is re-armed whenever
     // the menu (re)opens.
+    const closeMenu = useCallback(() => {
+        setMenu(null);
+        setPinnedSubmenu(null);
+        setHoveredPath([]);
+    }, []);
+
     useEffect(() => {
         if (!menu) {
             return;
         }
-        const close = () => {
-            setMenu(null);
-            setPinnedSubmenu(null);
-            setHoveredPath([]);
-        };
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                setMenu(null);
-                setPinnedSubmenu(null);
-                setHoveredPath([]);
+                closeMenu();
             }
         };
-        window.addEventListener('mousedown', close);
+        window.addEventListener('mousedown', closeMenu);
         window.addEventListener('keydown', onKey);
         return () => {
-            window.removeEventListener('mousedown', close);
+            window.removeEventListener('mousedown', closeMenu);
             window.removeEventListener('keydown', onKey);
         };
-    }, [menu]);
+    }, [menu, closeMenu]);
 
     // Build the context menu items for a given script, so the Star label reflects
     // the current favorite state.
@@ -1381,7 +1380,7 @@ function App() {
                     setHoveredPath={setHoveredPath}
                     pinnedSubmenu={pinnedSubmenu}
                     setPinnedSubmenu={setPinnedSubmenu}
-                    closeMenu={() => setMenu(null)}
+                    closeMenu={closeMenu}
                 />
             )}
         </div>
