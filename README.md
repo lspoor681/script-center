@@ -110,7 +110,7 @@ With the Wails CLI installed and the frontend dependencies installed, the
 ```sh
 make dev        # run the app with frontend hot reload
 make build      # build a redistributable (passes the webkit2_41 tag)
-make check      # fmt-check + vet + lint + test, everything CI runs
+make check      # fmt-check + vet + lint + go test + npm test, everything CI runs
 ```
 
 The `Makefile` is Unix-oriented (`rm`, `grep`, `awk`), so on Windows call the
@@ -134,17 +134,27 @@ go test -race -count=1 ./...  # what CI runs
 go test -v -count=1 -run 'TestPTY' ./internal/pty/   # interactive-shell smoke tests
 go vet ./...
 golangci-lint run
+cd frontend && npm test       # the window tests
 cd frontend && npm run build  # type-check and bundle the frontend
 ```
 
-CI (`.github/workflows/ci.yml`) runs three jobs on pushes to `main`, on every
+The frontend tests need no backend and no display. `frontend/src/test-setup.ts`
+replaces `./api` and the generated Wails runtime — the component's only two ways
+out — so `App.tsx` renders under jsdom and a test can decide what the backend
+answers and in what order, including delivering an event at the moment it would
+really arrive. `frontend/src/test-helpers.ts` has the fixtures. The cases worth
+copying are the ones that resolve a deferred answer out of order, because that
+turns an interleaving into a fact rather than a timing hope.
+
+CI (`.github/workflows/ci.yml`) runs four jobs on pushes to `main`, on every
 pull request, and on demand:
 
 - **Lint** (ubuntu): `gofmt -s -l` over the Go tree, then golangci-lint.
-- **Test** (ubuntu + windows): `go vet`, the `TestPTY` smoke tests, then
+- **Frontend** (ubuntu): `npm ci`, then `tsc --noEmit` and `npm test`.
+- **Test** (ubuntu + windows + macos): `go vet`, the `TestPTY` smoke tests, then
   `go test -race -count=1 ./...`. The Windows job installs a MinGW
   toolchain first, because the race detector needs cgo and a C compiler.
-- **Build** (ubuntu + windows): installs Node and Wails, runs
+- **Build** (ubuntu + windows + macos): installs Node and Wails, runs
   `wails build -tags webkit2_41` (the tag is unconditional — it is required on
   ubuntu-latest, which has no WebKitGTK 4.0), and uploads the produced
   binaries. The Windows job installs the same MinGW toolchain, so a dependency
@@ -154,6 +164,11 @@ pull request, and on demand:
 The PTY smoke tests deliberately run on Windows: a loss of pseudo-terminal
 support cross-compiles cleanly and only fails at runtime, so those tests are the
 one thing that catches it.
+
+macOS is in both matrices for the same reason, one step weaker: the tree has
+platform files for it — clipboard and reveal through `pbcopy` and `open -R`, and
+its own editor detection — which are excluded by build tags on the other two
+runners. Without a macOS job nothing compiles them.
 
 ## Notes for Windows developers
 

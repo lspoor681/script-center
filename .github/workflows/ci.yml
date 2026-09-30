@@ -6,6 +6,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A second push to a branch cancels the run for the earlier one. Every run is a
+# full matrix across three operating systems plus a frontend job, and a series of
+# pushes to a PR spends that runner time re-testing commits nobody will look at.
+# The ordering matters: without the branch key, a push event would cancel the PR's
+# own run for the same commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -13,6 +22,9 @@ env:
   GO_VERSION: '1.27.x'
   WAILS_VERSION: v2.14.0
   GOLANGCI_LINT_VERSION: v2.14.0
+  # Kept in step with WAILS_TAGS in the Makefile. A CI build that resolved the
+  # tag differently from a local one would report on a build nobody makes.
+  WAILS_TAGS: webkit2_41
 
 jobs:
   lint:
@@ -39,13 +51,49 @@ jobs:
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
 
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci rather than npm install: it installs exactly what the lock file
+      # pins and fails if the two disagree, so a commit that edits package.json
+      # without the lock file cannot reach the later steps.
+      - name: Install
+        run: npm ci
+        working-directory: frontend
+
+      # Also covered by the build job's wails build, but run on its own so a
+      # type error is reported as a type error rather than as a build failure
+      # partway through bundling.
+      - name: Type-check
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Test
+        run: npm test
+        working-directory: frontend
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # macOS is here because the tree has platform code for it that nothing
+        # else compiles: clipboard and reveal via pbcopy and open -R, and its
+        # own editor detection. Those files are excluded by build tags on the
+        # other two, so without a macOS runner they are compiled by nobody and
+        # can rot silently — a syntax error or a changed signature in one of
+        # them would ship unnoticed.
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
 
@@ -94,7 +142,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # macOS because the app ships one. Without it, a change that only breaks
+        # the macOS bundle is found by whoever has a Mac, rather than by CI.
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
 
@@ -136,15 +186,20 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "MINGW_BIN=$($gcc.DirectoryName)"
 
       # ubuntu-latest ships webkit2gtk-4.1 and no 4.0, so the tag is required
-      # rather than optional here. Note: do NOT add NODE_ENV=production to
-      # this step. wails runs `npm install`, and with NODE_ENV=production npm
-      # omits devDependencies, leaving tsc and vite missing so the frontend
-      # build fails.
+      # rather than optional there. The Makefile applies it to every platform
+      # because that is where the local build reads it from, and WAILS_TAGS is
+      # overridable for a machine that needs something else, so CI uses the same
+      # value the Makefile does by default rather than a second copy that can
+      # drift.
+      #
+      # Note: do NOT add NODE_ENV=production to this step. wails runs
+      # `npm install`, and with NODE_ENV=production npm omits devDependencies,
+      # leaving tsc and vite missing so the frontend build fails.
       - name: Build application
         shell: bash
         run: |
           if [ -n "$MINGW_BIN" ]; then export PATH="$MINGW_BIN:$PATH"; fi
-          wails build -tags webkit2_41
+          wails build -tags "${{ env.WAILS_TAGS }}"
 
       - uses: actions/upload-artifact@v4
         with:

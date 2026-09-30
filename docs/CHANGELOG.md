@@ -10,6 +10,20 @@ checked off or retired in the TODO at the end of each session.
 
 ### Added
 
+- **macOS is built and tested in CI.** The tree has platform files for it —
+  clipboard and reveal through `pbcopy` and `open -R`, and its own editor
+  detection — which are excluded by build tags on the Linux and Windows runners,
+  so until now nothing compiled them and a change to one could ship broken.
+  It is in both the test and the build matrix.
+- **The frontend is checked on its own.** A new Frontend job runs `npm ci`,
+  `tsc --noEmit` and `npm test`, so a type error is reported as a type error
+  rather than as a failure partway through bundling. Previously the frontend was
+  only covered incidentally, by the frontend build inside the Wails build.
+- **A second push to a pull request cancels the earlier run.** Each run is a
+  matrix across three operating systems plus the frontend job, and a series of
+  pushes was spending that runner time re-testing commits nobody would look at.
+  Pushes to `main` are not cancelled, so main always has a result for its
+  latest commit.
 - **The git strip follows you back to the window.** Bringing the window to the
   front re-reads the repository state and the edited badges, so a commit made in
   a terminal is reflected without pressing ↻. A focus re-reads the repository
