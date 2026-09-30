@@ -89,6 +89,22 @@ checked off or retired in the TODO at the end of each session.
 
 ### Fixed
 
+- **Edited badges were missing, and then cleared, for a folder inside a
+  repository.** `internal/git` has two functions that are meant to agree on a
+  coordinate system: `TrackedFiles` enumerates the scripts under a root, and
+  `Porcelain` reports their working-tree status. They did not. `git status
+  --porcelain` always writes paths relative to the *repository root* and offers
+  no flag to change that, while `git ls-files` writes them relative to the
+  directory it is run in. A root such as `<repo>/tools/scripts` therefore got
+  statuses keyed `tools/scripts/deploy.ps1` against scan entries keyed
+  `deploy.ps1`, and the lookup behind the badge never matched. It looked like a
+  badge that appeared and then disappeared, because the refresh treats an absent
+  entry as clean and a path outside the root was reported as though it were
+  inside it. The status keys are now rebased onto the scanned directory using
+  `git rev-parse --show-prefix`, which is the one piece of information git will
+  volunteer here, and paths above the root are dropped. Tests drive a real
+  repository at both the git and application level, and both fail without the
+  change.
 - **The application would not build on Linux or macOS.** The editor detection
   added for "Open with…" chose its platform with a `switch runtime.GOOS` in the
   shared file, but that file also named all three platform routines. Go derives a

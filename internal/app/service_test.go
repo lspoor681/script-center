@@ -1265,6 +1265,53 @@ func TestRefreshGitListsModifiedPathsSorted(t *testing.T) {
 	}
 }
 
+func TestRefreshGitOnARepositorySubdirectoryRoot(t *testing.T) {
+	// A root is frequently a folder inside a repository rather than its top.
+	// Porcelain reports paths from the top of the repository whatever directory
+	// git is run in, so the status keys did not match the paths the scanner
+	// produces for a subdirectory root: an edited script came back clean, and a
+	// refresh then cleared a badge that had briefly been right, because the
+	// refresh treats an absent entry as unmodified.
+	service, _ := newTestService(t)
+	repo := t.TempDir()
+
+	for _, name := range []string{"tools/deploy.sh", "tools/deep/nested.sh", "top.sh"} {
+		path := filepath.Join(repo, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/bash\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !gitRepo(t, repo) {
+		t.Skip("git is not installed, so this root has no repository to refresh")
+	}
+
+	sub := filepath.Join(repo, "tools")
+	for _, name := range []string{"tools/deploy.sh", "tools/deep/nested.sh", "top.sh"} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte("#!/bin/bash\n# edited\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	refresh := service.RefreshGit(context.Background(), sub)
+	want := []string{"deep/nested.sh", "deploy.sh"}
+	if !reflect.DeepEqual(refresh.Modified, want) {
+		t.Errorf("Modified = %v, want %v (relative to the subdirectory root)", refresh.Modified, want)
+	}
+
+	// The badge looks a status up by the scanner's relative path, so the same
+	// key set has to flag the rows the window renders.
+	scripts := []ScriptView{{Rel: "deploy.sh"}, {Rel: "deep/nested.sh"}, {Rel: "clean.sh"}}
+	markModified(scripts, gitModified(context.Background(), sub))
+	for i, want := range []bool{true, true, false} {
+		if scripts[i].Modified != want {
+			t.Errorf("script %q Modified = %v, want %v", scripts[i].Rel, scripts[i].Modified, want)
+		}
+	}
+}
+
 func TestRefreshGitOnAPlainDirectoryReportsNoStatus(t *testing.T) {
 	// A folder that is not a repository has no strip, and the window needs to be
 	// able to say so rather than being handed an error to raise about a focus.

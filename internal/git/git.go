@@ -313,7 +313,36 @@ func Porcelain(ctx context.Context, dir string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("git status --porcelain in %s: %w", dir, err)
 	}
-	return parsePorcelain(string(out)), nil
+
+	// Porcelain v1 reports paths relative to the repository root no matter which
+	// directory git runs in, and offers no flag to change that. A root that is
+	// a subdirectory therefore yields keys prefixed with its path from the top
+	// of the repository, which never match the cwd-relative paths TrackedFiles
+	// returns, so the two have to be put on the same basis before the caller
+	// can line them up. --show-prefix is dir's own path from the repository
+	// root, and is empty at the root itself.
+	prefix, err := run(ctx, dir, "rev-parse", "--show-prefix")
+	if err != nil {
+		return nil, fmt.Errorf("git rev-parse --show-prefix in %s: %w", dir, err)
+	}
+
+	return rebase(parsePorcelain(string(out)), strings.TrimSuffix(strings.TrimSpace(string(prefix)), "/")), nil
+}
+
+// rebase rewrites repository-root-relative status keys to be relative to the
+// scanned directory, dropping the entries outside it. An empty prefix means dir
+// is already the repository root and the paths need no adjustment.
+func rebase(statuses map[string]string, prefix string) map[string]string {
+	if prefix == "" {
+		return statuses
+	}
+	rel := make(map[string]string, len(statuses))
+	for path, status := range statuses {
+		if trimmed, ok := strings.CutPrefix(path, prefix+"/"); ok {
+			rel[trimmed] = status
+		}
+	}
+	return rel
 }
 
 // parsePorcelain reads the NUL-delimited porcelain v1 output produced with -z.

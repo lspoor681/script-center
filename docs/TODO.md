@@ -154,6 +154,14 @@ current plan of record.
       also gained its first tests, which reach the platform routine through three
       build-tagged files rather than a runtime switch, since a single test doing
       that would not build on Linux either.
+- [x] **Git status path base for subdirectory roots.** `TrackedFiles` and
+      `Porcelain` disagreed about what a path was relative to: `git status
+      --porcelain` always reports from the top of the repository and has no flag
+      to change that, while `git ls-files` reports from the directory it runs in.
+      For a root inside a repository the two never lined up, so the edited badge
+      missed on load and a refresh cleared it, treating an absent entry as clean.
+      The status keys are rebased onto the scanned directory with `git rev-parse
+      --show-prefix`, and paths above the root are dropped.
 
 ## Backlog
 

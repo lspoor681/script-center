@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -339,6 +340,102 @@ func TestPorcelainReportsKinds(t *testing.T) {
 		if got[path] != want {
 			t.Errorf("Porcelain[%q] = %q, want %q", path, got[path], want)
 		}
+	}
+}
+
+// TestPorcelainPathsAreRelativeToASubdirectory covers a root that is a
+// subdirectory of the repository rather than its top level. Porcelain v1
+// reports paths relative to the repository root whatever directory git runs
+// in, while TrackedFiles reports them relative to the directory, so the two
+// disagreed here: a script at sub/deploy.ps1 came back as "sub/deploy.ps1"
+// from one and "deploy.ps1" from the other, and the edited badge, which looks
+// the status up by the scanner's relative path, never matched. It looked like
+// a badge that appeared and then vanished on refresh, because the refresh
+// treats an absent entry as clean.
+func TestPorcelainPathsAreRelativeToASubdirectory(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	write(t, repo, "top.ps1", "# top\n")
+	write(t, repo, "sub/deploy.ps1", "# deploy\n")
+	write(t, repo, "sub/deep/nested.ps1", "# nested\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "scripts")
+
+	sub := filepath.Join(repo, "sub")
+
+	// An edited tracked file and a new untracked one, both inside sub. top.ps1
+	// is edited too, so the drop of paths outside the root is exercised.
+	write(t, repo, "sub/deploy.ps1", "# changed\n")
+	write(t, repo, "sub/deep/nested.ps1", "# changed\n")
+	write(t, repo, "sub/fresh.ps1", "# new\n")
+	write(t, repo, "top.ps1", "# changed\n")
+
+	got, err := Porcelain(ctx, sub)
+	if err != nil {
+		t.Fatalf("Porcelain: %v", err)
+	}
+
+	for path, want := range map[string]string{
+		"deploy.ps1":      " M",
+		"deep/nested.ps1": " M",
+		"fresh.ps1":       "??",
+	} {
+		if got[path] != want {
+			t.Errorf("Porcelain[%q] = %q, want %q", path, got[path], want)
+		}
+	}
+
+	// Nothing outside the scanned root belongs in the result, and no key may
+	// still carry the path from the repository top.
+	for path := range got {
+		if strings.HasPrefix(path, "sub/") {
+			t.Errorf("Porcelain()[%q] is still relative to the repository root", path)
+		}
+	}
+	if _, ok := got["../top.ps1"]; ok {
+		t.Error("Porcelain reported a path outside the scanned directory")
+	}
+	if len(got) != 3 {
+		t.Errorf("Porcelain() returned %d entries (%v), want 3", len(got), got)
+	}
+}
+
+// TestPorcelainAgreesWithTrackedFiles is the invariant the badge depends on:
+// every status key has to be a path TrackedFiles could also return for the same
+// directory, or the lookup in the app can never hit.
+func TestPorcelainAgreesWithTrackedFiles(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	write(t, repo, "sub/deploy.ps1", "# deploy\n")
+	write(t, repo, "sub/fresh.ps1", "# fresh\n")
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "scripts")
+
+	sub := filepath.Join(repo, "sub")
+	write(t, repo, "sub/deploy.ps1", "# changed\n")
+
+	statuses, err := Porcelain(ctx, sub)
+	if err != nil {
+		t.Fatalf("Porcelain: %v", err)
+	}
+	tracked, err := TrackedFiles(ctx, sub)
+	if err != nil {
+		t.Fatalf("TrackedFiles: %v", err)
+	}
+
+	known := make(map[string]bool, len(tracked))
+	for _, p := range tracked {
+		known[p] = true
+	}
+	for path := range statuses {
+		if !known[path] {
+			t.Errorf("Porcelain key %q is not among TrackedFiles %v", path, tracked)
+		}
+	}
+	if len(tracked) != 2 {
+		t.Errorf("TrackedFiles() = %v, want the two scripts relative to the subdirectory", tracked)
 	}
 }
 
