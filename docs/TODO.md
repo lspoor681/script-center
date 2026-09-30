@@ -165,6 +165,18 @@ current plan of record.
 
 ## Backlog
 
+- [ ] **Cancelling a run can take up to five seconds on Windows.** `crosspty`'s
+      Close first closes the input pipe to give the child a chance to exit on
+      its own, and waits out its kill delay before killing the job object.
+      Those defaults are five and ten seconds, and `internal/pty` never sets
+      them, so pressing Stop can leave the run panel waiting on
+      `api.stopScript` for several seconds. Bounded and not a correctness
+      problem, and the delay is what lets a script clean up after itself, so
+      shortening it is a judgement call rather than a bug fix. It needs a
+      `CloseConfig` passthrough on `internal/pty.Config` to be tunable at all.
+
+## Backlog
+
 - [ ] **Form-driven arguments.** Build the command line from the harvested
       parameter form instead of free-text extra arguments. Needs an argv builder
       in `internal/params` plus a fill-in form in the run panel. Once it ships,

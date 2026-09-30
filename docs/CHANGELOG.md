@@ -89,6 +89,23 @@ checked off or retired in the TODO at the end of each session.
 
 ### Fixed
 
+- **The Windows build was red about half the time, for no reason.** The test
+  that covers canceling a run asserted that the child's *exit code* was
+  non-zero after the session was closed, and on Windows that code is not a
+  reliable proxy for whether the process was stopped. `crosspty` first closes
+  the input pipe to ask the child to exit on its own, and only kills the job
+  object if the child has not gone within its kill delay; the graceful path
+  reports the control-c exit code and the forced path reports `KillExitCode`,
+  which defaults to `0`. So the same child that was in fact terminated cleanly
+  failed the test whenever it took the forced path, which is what happened on
+  roughly half of all Windows CI runs and on none of the Unix ones. There was
+  never a leaked process. The test now asks the question it was written to ask,
+  which is whether the process is still running, using `kill(pid, 0)` on Unix
+  and `OpenProcess` plus the exit code on Windows, where a handle to a
+  terminated-but-unreaped process still opens. A companion test checks the
+  helper against both a running and a finished child, because the first test
+  only ever asks about a dead one and would otherwise pass forever against a
+  helper that always answered "gone".
 - **Edited badges were missing, and then cleared, for a folder inside a
   repository.** `internal/git` has two functions that are meant to agree on a
   coordinate system: `TrackedFiles` enumerates the scripts under a root, and

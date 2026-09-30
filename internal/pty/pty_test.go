@@ -110,10 +110,22 @@ func TestPTYExitCode(t *testing.T) {
 // TestPTYCloseTerminatesChild covers cancellation: closing the session must
 // stop the child rather than leaving it orphaned. Without this, canceling a
 // run would leak a process for every interrupted script.
+//
+// It checks whether the child is still running rather than what it exited with,
+// because the exit code is not a sound proxy for whether it was stopped. On
+// Unix a killed child reports a signal and the code is meaningful. On Windows
+// crosspty first closes the input pipe to ask the child to exit on its own, and
+// only kills the job object if the child has not gone within its kill delay.
+// The graceful path yields the control-c exit code and the forced path yields
+// KillExitCode, which defaults to 0. A test asserting a non-zero code therefore
+// passed or failed depending on which teardown path won the race, which is how
+// this test came to fail on roughly half of all Windows CI runs while passing
+// every time on Unix.
 func TestPTYCloseTerminatesChild(t *testing.T) {
 	s := mustStart(t, Config{Argv: longRunningArgv()})
 
-	if pid := s.Pid(); pid <= 0 {
+	pid := s.Pid()
+	if pid <= 0 {
 		t.Fatalf("Pid() = %d, want a positive process id", pid)
 	}
 
@@ -121,9 +133,42 @@ func TestPTYCloseTerminatesChild(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	// Wait is idempotent and a successful Close stops it, so this cannot hang.
-	if got := s.Wait(); got == 0 {
-		t.Fatalf("Wait() after Close = 0, want a non-zero termination code")
+	// Wait blocks until the child has been reaped, so once it returns the
+	// process is definitively gone and there is no need to poll for it. A
+	// Close that failed to stop the child would leave this blocking, and the
+	// 10 minute go test timeout would report the hang.
+	s.Wait()
+
+	if processAlive(pid) {
+		t.Fatalf("process %d is still running after Close, so canceling a run would leak it", pid)
+	}
+}
+
+// TestProcessAliveTellsLiveAndDeadApart is the control for
+// TestPTYCloseTerminatesChild. That test only ever asks about a process that
+// has already gone, so a processAlive that was simply always false would make it
+// pass without proving anything, on every platform, forever. This one asks both
+// ways about the same child: it must report a running child as alive, so a false
+// negative is caught here rather than silently hollowing out the test above.
+func TestProcessAliveTellsLiveAndDeadApart(t *testing.T) {
+	s := mustStart(t, Config{Argv: longRunningArgv()})
+
+	pid := s.Pid()
+	if pid <= 0 {
+		t.Fatalf("Pid() = %d, want a positive process id", pid)
+	}
+
+	if !processAlive(pid) {
+		t.Fatalf("process %d is running but processAlive said it was gone", pid)
+	}
+
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	s.Wait()
+
+	if processAlive(pid) {
+		t.Fatalf("process %d has exited but processAlive said it was running", pid)
 	}
 }
 
