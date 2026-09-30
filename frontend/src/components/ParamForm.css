@@ -128,10 +128,24 @@
   align-items: center;
 }
 
+.param-bool .param-bool-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .param-bool input[type="checkbox"] {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
+}
+
+.param-bool-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--faint);
+  min-width: 44px;
+  text-align: center;
 }
 
 .param-default {

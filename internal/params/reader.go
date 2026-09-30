@@ -3,12 +3,17 @@ package params
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/lspoor/script-center/internal/detect"
 )
+
+// pathHeuristicSuffixes matches parameter names that suggest a filesystem path.
+// Only applied when the declared type is ambiguous (KindString or KindOther).
+var pathHeuristicSuffixes = regexp.MustCompile(`(?i)(Path|File|Dir|Folder|Input|Csv|Txt|Output)$`)
 
 // Extractor reads parameter and documentation metadata out of scripts of one
 // language.
@@ -278,6 +283,11 @@ func (r *Reader) Read(ctx context.Context, scripts []Script) ([]Report, error) {
 		grouped[language] = append(grouped[language], script)
 	}
 	if len(grouped) == 0 {
+		// All scripts served from cache - apply heuristic before returning
+		for path, report := range byPath {
+			applyPathHeuristic(&report)
+			byPath[path] = report
+		}
 		return r.ordered(scripts, byPath), nil
 	}
 
@@ -314,6 +324,14 @@ func (r *Reader) Read(ctx context.Context, scripts []Script) ([]Report, error) {
 		for _, report := range reports {
 			byPath[report.Path] = report
 		}
+	}
+
+	// Apply path heuristic to all reports (cached or freshly harvested).
+	// This ensures the browse button appears for path-like parameter names
+	// even when served from cache.
+	for path, report := range byPath {
+		applyPathHeuristic(&report)
+		byPath[path] = report
 	}
 
 	// Whatever was read is remembered against the file state it was read from, so
@@ -456,4 +474,19 @@ func (s Script) String() string {
 		return s.Path
 	}
 	return fmt.Sprintf("%s (%s)", s.Path, s.Language)
+}
+
+// applyPathHeuristic upgrades string/other parameters to KindPath when their
+// names end with a known path-like suffix. This runs on every report returned
+// by the reader, whether freshly harvested or from cache, so the browse button
+// appears without requiring a cache invalidation.
+func applyPathHeuristic(report *Report) {
+	for i := range report.Params {
+		p := &report.Params[i]
+		if p.Kind == KindString || p.Kind == KindOther {
+			if pathHeuristicSuffixes.MatchString(p.Name) {
+				p.Kind = KindPath
+			}
+		}
+	}
 }

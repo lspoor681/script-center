@@ -114,13 +114,16 @@ export function ParamForm({
         return (
           <div className="param-row param-bool">
             <label className="param-label">{label}</label>
-            <div className="param-control">
+            <div className="param-bool-control">
               <input
                 type="checkbox"
                 checked={value === true}
                 onChange={(e) => handleChange(param.name, e.target.checked)}
                 disabled={value === undefined && !param.default}
               />
+              <span className="param-bool-label">
+                {value === true ? 'True' : value === false ? 'False' : '—'}
+              </span>
               {param.default && !isRequired && (
                 <span className="param-default">Default: {defaultValue}</span>
               )}

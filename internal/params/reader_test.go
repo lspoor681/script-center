@@ -614,3 +614,81 @@ func TestReaderCachesAScriptThatGenuinelyHasNoParameters(t *testing.T) {
 		t.Error("a script read successfully was not cached, so every open pays for it again")
 	}
 }
+
+func TestReaderAppliesPathHeuristic(t *testing.T) {
+	// The path heuristic should run on every read, including cached reports.
+	// Create a cached report with string params that should become paths.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "script.ps1")
+	_ = os.WriteFile(path, []byte("param([string]$ConfigPath, [string]$Server)"), 0o644)
+	info, _ := os.Stat(path)
+	size := info.Size()
+	modTime := info.ModTime()
+
+	cache := NewCache("")
+	cached := Report{Path: path, Help: Help{Synopsis: "from the cache", Source: HelpSourceComment}}
+	cached.Params = append(cached.Params, Param{Name: "ConfigPath", Kind: KindString})
+	cached.Params = append(cached.Params, Param{Name: "Server", Kind: KindString})
+	cache.Store(path, size, modTime, "powershell", cached)
+
+	reader := NewReader(Options{})
+	reader.Cache = cache
+	reports, err := reader.Read(context.Background(), []Script{{
+		Path: path, Language: detect.PowerShell, Size: size, ModTime: modTime,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("got %d reports, want 1", len(reports))
+	}
+	report := reports[0]
+
+	// ConfigPath should be upgraded to path by the heuristic
+	configPath := findParam(t, report, "ConfigPath")
+	if configPath.Kind != KindPath {
+		t.Errorf("ConfigPath: Kind = %q, want %q (heuristic should apply to cached report)", configPath.Kind, KindPath)
+	}
+
+	// Server should remain string (no matching suffix)
+	server := findParam(t, report, "Server")
+	if server.Kind != KindString {
+		t.Errorf("Server: Kind = %q, want %q (no suffix match)", server.Kind, KindString)
+	}
+}
+
+func TestReaderAppliesPathHeuristicRespectsExplicitTypes(t *testing.T) {
+	// Explicit types (int, FileInfo, ValidateSet) should not be overridden.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "script.ps1")
+	_ = os.WriteFile(path, []byte("param([int]$RetryCount, [System.IO.FileInfo]$ExplicitPath)"), 0o644)
+	info, _ := os.Stat(path)
+	size := info.Size()
+	modTime := info.ModTime()
+
+	cache := NewCache("")
+	cached := Report{Path: path, Help: Help{Synopsis: "from the cache", Source: HelpSourceComment}}
+	cached.Params = append(cached.Params, Param{Name: "RetryCount", Kind: KindInt})
+	cached.Params = append(cached.Params, Param{Name: "ExplicitPath", Kind: KindPath})
+	cache.Store(path, size, modTime, "powershell", cached)
+
+	reader := NewReader(Options{})
+	reader.Cache = cache
+	reports, err := reader.Read(context.Background(), []Script{{
+		Path: path, Language: detect.PowerShell, Size: size, ModTime: modTime,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := reports[0]
+
+	retry := findParam(t, report, "RetryCount")
+	if retry.Kind != KindInt {
+		t.Errorf("RetryCount: Kind = %q, want %q (explicit int should win)", retry.Kind, KindInt)
+	}
+
+	explicit := findParam(t, report, "ExplicitPath")
+	if explicit.Kind != KindPath {
+		t.Errorf("ExplicitPath: Kind = %q, want %q (explicit FileInfo should win)", explicit.Kind, KindPath)
+	}
+}
