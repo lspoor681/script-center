@@ -556,6 +556,15 @@ function Get-ScriptRecord {
       if ($hasSet -and $kind -ne 'array') { $kind = 'enum' }
       if ($hasSet -and $kind -eq 'array') { $kind = 'array' }
 
+      # Fallback: infer path kind from parameter name suffix when type is
+      # ambiguous (string/other). This catches common naming conventions like
+      # ConfigPath, InputFile, LogDir, OutputFolder, DataCsv, etc.
+      if ($kind -in @('string', 'other')) {
+        if ($name -match '(?i)(Path|File|Dir|Folder|Input|Csv|Txt|Output)$') {
+          $kind = 'path'
+        }
+      }
+
       $harvested += [ordered]@{
         name = $name
         aliases = @($aliases)

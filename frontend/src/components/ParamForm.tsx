@@ -317,7 +317,7 @@ export function ParamForm({
           <span>{expanded ? '▼' : '▶'} Parameters ({params.length})</span>
           <span className="toggle-actions">
             {lastRunValues && onRepopulate && (
-              <button type="button" className="repopulate-btn" onClick={onRepopulate} title="Fill from last run">
+              <button type="button" className="repopulate-btn" onClick={(e) => { e.stopPropagation(); onRepopulate(); }} title="Fill from last run">
                 ↺ Repopulate
               </button>
             )}
